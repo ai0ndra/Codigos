@@ -1,0 +1,46 @@
+const int dirPin = 8;
+const int stepPin = 9;
+const int switchPin = 2; // Limit switch (Normalmente Cerrado)
+
+volatile bool trigger = false; // Se activa con la interrupción
+int movimientos = 0;
+
+void setup() {
+  pinMode(dirPin, OUTPUT);
+  pinMode(stepPin, OUTPUT);
+  pinMode(switchPin, INPUT_PULLUP); // NC → se abre → HIGH al soltarlo
+
+  attachInterrupt(digitalPinToInterrupt(switchPin), switchOpened, RISING);
+}
+
+void loop() {
+  if (trigger) {
+    trigger = false; // limpiamos la bandera
+    moverPasoCorregido();
+  }
+}
+
+void switchOpened() {
+  trigger = true;
+}
+
+void moverPasoCorregido() {
+  movimientos++;
+
+  int pasos;
+
+  // Corrección cada 3 vueltas: 1066 + 1066 + 1068 = 3200 pasos (una vuelta)
+  if (movimientos % 3 == 0) {
+    pasos = 1068;
+  } else {
+    pasos = 1066;
+  }
+
+  digitalWrite(dirPin, HIGH); // o LOW si necesitas otro sentido
+  for (int i = 0; i < pasos; i++) {
+    digitalWrite(stepPin, HIGH);
+    delayMicroseconds(500);
+    digitalWrite(stepPin, LOW);
+    delayMicroseconds(500);
+  }
+}
