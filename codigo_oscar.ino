@@ -288,6 +288,13 @@ void loop() {
       }
     }
   }
+
+  // Check for unpause signal
+  if (system_despausa) {
+    system_pausa = true;
+    system_despausa = false;
+  }
+
   // Si el sistema está activo, ejecutar continuamente la lógica
   if (systemActive_afterCom1) {
     run_codigo_oscar();
