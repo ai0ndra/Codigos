@@ -32,7 +32,7 @@ const unsigned long normalOp_noHomeTimeout = 20000; // 20 seconds for override i
 
 // Variables for Startup Homing / 3-Try Recovery System
 int startupHoming_attemptCounter = 0;
-bool systemHalted_startupHomingFailed = false;
+bool system_startupHomingFailed = false;
 bool systemIsInStartupHomingPhase = true; // System starts in Homing/Recovery phase
 
 Servo myServo; // Declare Servo object
@@ -49,12 +49,14 @@ unsigned long servo_finishTime = 0;
 const unsigned long nema_quietTimeAfterServo = 2000;
 
 bool systemActive_afterCom1 = false; // System is initially inactive until "com1" is received
+bool system_pausa = true;
 
 // Function to wrap existing code
 void run_codigo_oscar() {
   if (systemActive_afterCom1) {
+    if (system_pausa) {
     // --- Startup Homing Logic Block ---
-    if (systemIsInStartupHomingPhase && !systemHalted_startupHomingFailed && !motorIsMoving) {
+    if (systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving) {
       if (triggerState == HIGH) { // Switch 1 (switchPin) was pressed
         systemIsInStartupHomingPhase = false; // Transition to Normal Operation
         stepper_lastHomeTime = millis();      // Mark successful home time
@@ -74,9 +76,9 @@ void run_codigo_oscar() {
           }
           // If triggerState is HIGH, the (triggerState == HIGH) block above will catch it next loop.
         } else { // 3 attempts are done
-          if (!systemHalted_startupHomingFailed) { // Send "vacio" only once
+          if (!system_startupHomingFailed) { // Send "vacio" only once
             Serial.println("vacio"); 
-            systemHalted_startupHomingFailed = true;
+            system_startupHomingFailed = true;
           }
           systemIsInStartupHomingPhase = false; // Exit startup homing phase (system is now halted)
         }
@@ -86,7 +88,7 @@ void run_codigo_oscar() {
 
     // --- Normal Operation Phase Logic ---
     // Condition: Not in homing/recovery, not halted, trigger from Switch 1 is HIGH, motor is idle.
-    if (!systemIsInStartupHomingPhase && !systemHalted_startupHomingFailed && triggerState == HIGH && !motorIsMoving) {
+    if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && triggerState == HIGH && !motorIsMoving) {
 
       stepper_lastHomeTime = millis();
       startupHoming_attemptCounter = 0; // Reset recovery attempts because normal cycle ran
@@ -113,7 +115,7 @@ void run_codigo_oscar() {
     // --- Normal Operation Stepper Override ---
     // Active only when not in startup homing, system not halted by startup failure,
     // stepper motor is idle, and no primary trigger from switchPin is pending.
-    if (!systemIsInStartupHomingPhase && !systemHalted_startupHomingFailed && !motorIsMoving && triggerState == LOW) {
+    if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving && triggerState == LOW) {
 
       // Check for 20s inactivity of Switch 1 AND Pin 4 (servoSwitchPin) being pressed
       if (((millis() - stepper_lastHomeTime) >= normalOp_noHomeTimeout) && (digitalRead(servoSwitchPin) == LOW)) {
@@ -156,7 +158,7 @@ void run_codigo_oscar() {
 
         if (servoSwitch_currentState == LOW) { // Switch was just pressed (debounced)
           // Only count presses if the system is not halted by other conditions.
-          if (!systemHalted_startupHomingFailed && !systemHalted_switch2Max) {
+          if (!system_startupHomingFailed && !systemHalted_switch2Max) {
             switch2_pressCount++;
             // Optional: Serial.print("Switch 2 Press Count: "); Serial.println(switch2_pressCount);
           }
@@ -183,6 +185,7 @@ void run_codigo_oscar() {
         servo_finishTime = millis(); // Set by snapshot servo logic
       }
     }
+    } // End of system Pausa
   } // End of if(systemActive_afterCom1)
 }
 
@@ -191,7 +194,7 @@ void switchAction() {
   unsigned long currentTime = millis();
   if ((currentTime - lastInterruptTime) > interruptDebounceDelay) {
     // Set trigger only if motor is idle AND system is not halted from startup homing failures
-    if (!motorIsMoving && !systemHalted_startupHomingFailed) { 
+    if (!motorIsMoving && !system_startupHomingFailed) { 
       triggerState = HIGH; 
     }
     lastInterruptTime = currentTime; 
@@ -260,7 +263,7 @@ void loop() {
             systemActive_afterCom1 = true;
             // Reiniciar estados para homing
             systemIsInStartupHomingPhase = true;
-            systemHalted_startupHomingFailed = false;
+            system_startupHomingFailed = false;
             startupHoming_attemptCounter = 0;
             stepper_lastHomeTime = millis() - startupHoming_timeout;
             triggerState = LOW;
@@ -283,5 +286,7 @@ void loop() {
   // Si el sistema está activo, ejecutar continuamente la lógica
   if (systemActive_afterCom1) {
     run_codigo_oscar();
+  }
+}
   }
 }
