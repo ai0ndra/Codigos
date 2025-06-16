@@ -194,6 +194,415 @@ void run_codigo_oscar() {
     } // End of system Pausa
  
   } // End of if(systemActive_afterCom1)
+
+  if (systemActive_afterCom2) {
+    if (system_pausa) {
+    // --- Startup Homing Logic Block ---
+    if (systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving) {
+      if (triggerState == HIGH) { // Switch 1 (switchPin) was pressed
+        systemIsInStartupHomingPhase = false; // Transition to Normal Operation
+        stepper_lastHomeTime = millis();      // Mark successful home time
+        startupHoming_attemptCounter = 0;    // Reset counter
+        // triggerState remains HIGH for the Normal Operation block to handle.
+      } else if ((millis() - stepper_lastHomeTime) >= startupHoming_timeout) { // 10s timeout
+        if (startupHoming_attemptCounter < 3) {
+          startupHoming_attemptCounter++;
+          // Optional: Serial.print("Startup Homing Attempt #"); Serial.println(startupHoming_attemptCounter);
+
+          motorIsMoving = true;
+          moverPasoCorregido();
+          motorIsMoving = false;
+
+          if (triggerState == LOW) { // If Switch 1 still not pressed by the recovery move
+            stepper_lastHomeTime = millis(); // Reset timer for the next 10s wait
+          }
+          // If triggerState is HIGH, the (triggerState == HIGH) block above will catch it next loop.
+        } else { // 3 attempts are done
+          if (!system_startupHomingFailed) { // Send "vacio" only once
+            Serial.println("vacio"); 
+            system_startupHomingFailed = true;
+          }
+          systemIsInStartupHomingPhase = false; // Exit startup homing phase (system is now halted)
+        }
+      }
+    }
+    // --- End Startup Homing Logic Block ---
+
+    // --- Normal Operation Phase Logic ---
+    // Condition: Not in homing/recovery, not halted, trigger from Switch 1 is HIGH, motor is idle.
+    if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && triggerState == HIGH && !motorIsMoving) {
+
+      stepper_lastHomeTime = millis();
+      startupHoming_attemptCounter = 0; // Reset recovery attempts because normal cycle ran
+      triggerState = LOW; // Consume the trigger for this cycle
+      motorIsMoving = true;
+      moverPasoCorregido();
+      motorIsMoving = false;
+      Serial.println("contador"); // uart_puts(uart0, "contador\n");
+        // Send message after NEMA move from Switch 1
+
+      // Servo Trigger (from snapshot)
+      if (digitalRead(servoSwitchPin) == LOW) {
+        if (!servo_isHoldingAt90) {
+          myServo.write(90);
+          digitalWrite(8, HIGH); // Set Pin 8 HIGH
+          servo_isHoldingAt90 = true;
+          servo_reached90Time = millis();
+          servo_isActive = true; // As per snapshot
+        }
+      }
+    }
+    // --- End Normal Operation Phase Logic ---
+
+    // --- Normal Operation Stepper Override ---
+    // Active only when not in startup homing, system not halted by startup failure,
+    // stepper motor is idle, and no primary trigger from switchPin is pending.
+    if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving && triggerState == LOW) {
+
+      // Check for 20s inactivity of Switch 1 AND Pin 4 (servoSwitchPin) being pressed
+      if (((millis() - stepper_lastHomeTime) >= normalOp_noHomeTimeout) && (digitalRead(servoSwitchPin) == LOW)) {
+
+        // Perform the override movement
+        // Optional: Serial.println("Normal Op Override Triggered");
+        motorIsMoving = true;
+        moverPasoCorregido(); // Uses the standard movement
+        motorIsMoving = false;
+
+        // After the movement, check if Switch 1 (switchPin) was pressed by this override move.
+        // The ISR for switchPin would have set triggerState to HIGH if it was pressed.
+        if (triggerState == LOW) { // Switch 1 still NOT pressed by the override move
+          Serial.println("vacio"); // Send "vacio" as per user's instruction
+        }
+        // If triggerState is HIGH, the Normal Stepper Cycle logic will handle it in the next loop,
+        // which will update stepper_lastHomeTime and reset startupHoming_attemptCounter.
+        // If triggerState is LOW (override didn't hit home), update stepper_lastHomeTime here
+        // to restart the 20s observation period for this Normal Operation Override path.
+        stepper_lastHomeTime = millis();
+      }
+    }
+    // --- End Normal Operation Stepper Override ---
+
+    // --- Pin 4 (servoSwitchPin) Debouncing and Press Counting START ---
+    int reading_servoSwitch = digitalRead(servoSwitchPin);
+
+    // If the switch changed, due to noise or pressing:
+    if (reading_servoSwitch != servoSwitch_lastState) {
+      servoSwitch_lastDebounceTime = millis(); // Reset the debouncing timer
+    }
+
+    if ((millis() - servoSwitch_lastDebounceTime) > servoSwitch_debounceDelay) {
+      // Whatever the reading is at, it's been there for longer than the debounce
+      // delay, so take it as the actual current state:
+
+      // If the switch state has changed (debounced):
+      if (reading_servoSwitch != servoSwitch_currentState) {
+        servoSwitch_currentState = reading_servoSwitch; // Update the official debounced state
+
+        if (servoSwitch_currentState == LOW) { // Switch was just pressed (debounced)
+          // Only count presses if the system is not halted by other conditions.
+          if (!system_startupHomingFailed && !systemHalted_switch2Max) {
+            switch2_pressCount++;
+            // Optional: Serial.print("Switch 2 Press Count: "); Serial.println(switch2_pressCount);
+          }
+        }
+      }
+    }
+    servoSwitch_lastState = reading_servoSwitch; // Save the current reading for the next loop iteration.
+    // --- Pin 4 (servoSwitchPin) Debouncing and Press Counting END ---
+
+    // --- Switch 2 (Pin 4) Counter Limit Check and Halt Logic START ---
+    if (!systemHalted_switch2Max && (switch2_pressCount >= switch2_maxPressCountC)) {
+      Serial.println("ter"); // uart_puts(uart0, "ter\n");
+      systemHalted_switch2Max = true; // Set the flag to indicate this halt condition is met
+    }
+    // --- Switch 2 (Pin 4) Counter Limit Check and Halt Logic END ---
+
+    // Servo Timed Return to 0 Logic (Snapshot version)
+    if (servo_isHoldingAt90) {
+      if ((millis() - servo_reached90Time) >= servo_DurationP) { // Use new constant name
+        myServo.write(0);
+        digitalWrite(8, LOW); // Set Pin 8 LOW
+        servo_isHoldingAt90 = false;
+        servo_isActive = false;      // Set by snapshot servo logic
+        servo_finishTime = millis(); // Set by snapshot servo logic
+      }
+    }
+    } // End of system Pausa
+ 
+  } // End of if(systemActive_afterCom2)
+  if (systemActive_afterCom3) {
+    if (system_pausa) {
+    // --- Startup Homing Logic Block ---
+    if (systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving) {
+      if (triggerState == HIGH) { // Switch 1 (switchPin) was pressed
+        systemIsInStartupHomingPhase = false; // Transition to Normal Operation
+        stepper_lastHomeTime = millis();      // Mark successful home time
+        startupHoming_attemptCounter = 0;    // Reset counter
+        // triggerState remains HIGH for the Normal Operation block to handle.
+      } else if ((millis() - stepper_lastHomeTime) >= startupHoming_timeout) { // 10s timeout
+        if (startupHoming_attemptCounter < 3) {
+          startupHoming_attemptCounter++;
+          // Optional: Serial.print("Startup Homing Attempt #"); Serial.println(startupHoming_attemptCounter);
+
+          motorIsMoving = true;
+          moverPasoCorregido();
+          motorIsMoving = false;
+
+          if (triggerState == LOW) { // If Switch 1 still not pressed by the recovery move
+            stepper_lastHomeTime = millis(); // Reset timer for the next 10s wait
+          }
+          // If triggerState is HIGH, the (triggerState == HIGH) block above will catch it next loop.
+        } else { // 3 attempts are done
+          if (!system_startupHomingFailed) { // Send "vacio" only once
+            Serial.println("vacio"); 
+            system_startupHomingFailed = true;
+          }
+          systemIsInStartupHomingPhase = false; // Exit startup homing phase (system is now halted)
+        }
+      }
+    }
+    // --- End Startup Homing Logic Block ---
+
+    // --- Normal Operation Phase Logic ---
+    // Condition: Not in homing/recovery, not halted, trigger from Switch 1 is HIGH, motor is idle.
+    if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && triggerState == HIGH && !motorIsMoving) {
+
+      stepper_lastHomeTime = millis();
+      startupHoming_attemptCounter = 0; // Reset recovery attempts because normal cycle ran
+      triggerState = LOW; // Consume the trigger for this cycle
+      motorIsMoving = true;
+      moverPasoCorregido();
+      motorIsMoving = false;
+      Serial.println("contador"); // uart_puts(uart0, "contador\n");
+        // Send message after NEMA move from Switch 1
+
+      // Servo Trigger (from snapshot)
+      if (digitalRead(servoSwitchPin) == LOW) {
+        if (!servo_isHoldingAt90) {
+          myServo.write(90);
+          digitalWrite(8, HIGH); // Set Pin 8 HIGH
+          servo_isHoldingAt90 = true;
+          servo_reached90Time = millis();
+          servo_isActive = true; // As per snapshot
+        }
+      }
+    }
+    // --- End Normal Operation Phase Logic ---
+
+    // --- Normal Operation Stepper Override ---
+    // Active only when not in startup homing, system not halted by startup failure,
+    // stepper motor is idle, and no primary trigger from switchPin is pending.
+    if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving && triggerState == LOW) {
+
+      // Check for 20s inactivity of Switch 1 AND Pin 4 (servoSwitchPin) being pressed
+      if (((millis() - stepper_lastHomeTime) >= normalOp_noHomeTimeout) && (digitalRead(servoSwitchPin) == LOW)) {
+
+        // Perform the override movement
+        // Optional: Serial.println("Normal Op Override Triggered");
+        motorIsMoving = true;
+        moverPasoCorregido(); // Uses the standard movement
+        motorIsMoving = false;
+
+        // After the movement, check if Switch 1 (switchPin) was pressed by this override move.
+        // The ISR for switchPin would have set triggerState to HIGH if it was pressed.
+        if (triggerState == LOW) { // Switch 1 still NOT pressed by the override move
+          Serial.println("vacio"); // Send "vacio" as per user's instruction
+        }
+        // If triggerState is HIGH, the Normal Stepper Cycle logic will handle it in the next loop,
+        // which will update stepper_lastHomeTime and reset startupHoming_attemptCounter.
+        // If triggerState is LOW (override didn't hit home), update stepper_lastHomeTime here
+        // to restart the 20s observation period for this Normal Operation Override path.
+        stepper_lastHomeTime = millis();
+      }
+    }
+    // --- End Normal Operation Stepper Override ---
+
+    // --- Pin 4 (servoSwitchPin) Debouncing and Press Counting START ---
+    int reading_servoSwitch = digitalRead(servoSwitchPin);
+
+    // If the switch changed, due to noise or pressing:
+    if (reading_servoSwitch != servoSwitch_lastState) {
+      servoSwitch_lastDebounceTime = millis(); // Reset the debouncing timer
+    }
+
+    if ((millis() - servoSwitch_lastDebounceTime) > servoSwitch_debounceDelay) {
+      // Whatever the reading is at, it's been there for longer than the debounce
+      // delay, so take it as the actual current state:
+
+      // If the switch state has changed (debounced):
+      if (reading_servoSwitch != servoSwitch_currentState) {
+        servoSwitch_currentState = reading_servoSwitch; // Update the official debounced state
+
+        if (servoSwitch_currentState == LOW) { // Switch was just pressed (debounced)
+          // Only count presses if the system is not halted by other conditions.
+          if (!system_startupHomingFailed && !systemHalted_switch2Max) {
+            switch2_pressCount++;
+            // Optional: Serial.print("Switch 2 Press Count: "); Serial.println(switch2_pressCount);
+          }
+        }
+      }
+    }
+    servoSwitch_lastState = reading_servoSwitch; // Save the current reading for the next loop iteration.
+    // --- Pin 4 (servoSwitchPin) Debouncing and Press Counting END ---
+
+    // --- Switch 2 (Pin 4) Counter Limit Check and Halt Logic START ---
+    if (!systemHalted_switch2Max && (switch2_pressCount >= switch2_maxPressCount)) {
+      Serial.println("ter"); // uart_puts(uart0, "ter\n");
+      systemHalted_switch2Max = true; // Set the flag to indicate this halt condition is met
+    }
+    // --- Switch 2 (Pin 4) Counter Limit Check and Halt Logic END ---
+
+    // Servo Timed Return to 0 Logic (Snapshot version)
+    if (servo_isHoldingAt90) {
+      if ((millis() - servo_reached90Time) >= servo_DurationG) { // Use new constant name
+        myServo.write(0);
+        digitalWrite(8, LOW); // Set Pin 8 LOW
+        servo_isHoldingAt90 = false;
+        servo_isActive = false;      // Set by snapshot servo logic
+        servo_finishTime = millis(); // Set by snapshot servo logic
+      }
+    }
+    } // End of system Pausa
+ 
+  } // End of if(systemActive_afterCom1)
+
+  if (systemActive_afterCom2) {
+    if (system_pausa) {
+    // --- Startup Homing Logic Block ---
+    if (systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving) {
+      if (triggerState == HIGH) { // Switch 1 (switchPin) was pressed
+        systemIsInStartupHomingPhase = false; // Transition to Normal Operation
+        stepper_lastHomeTime = millis();      // Mark successful home time
+        startupHoming_attemptCounter = 0;    // Reset counter
+        // triggerState remains HIGH for the Normal Operation block to handle.
+      } else if ((millis() - stepper_lastHomeTime) >= startupHoming_timeout) { // 10s timeout
+        if (startupHoming_attemptCounter < 3) {
+          startupHoming_attemptCounter++;
+          // Optional: Serial.print("Startup Homing Attempt #"); Serial.println(startupHoming_attemptCounter);
+
+          motorIsMoving = true;
+          moverPasoCorregido();
+          motorIsMoving = false;
+
+          if (triggerState == LOW) { // If Switch 1 still not pressed by the recovery move
+            stepper_lastHomeTime = millis(); // Reset timer for the next 10s wait
+          }
+          // If triggerState is HIGH, the (triggerState == HIGH) block above will catch it next loop.
+        } else { // 3 attempts are done
+          if (!system_startupHomingFailed) { // Send "vacio" only once
+            Serial.println("vacio"); 
+            system_startupHomingFailed = true;
+          }
+          systemIsInStartupHomingPhase = false; // Exit startup homing phase (system is now halted)
+        }
+      }
+    }
+    // --- End Startup Homing Logic Block ---
+
+    // --- Normal Operation Phase Logic ---
+    // Condition: Not in homing/recovery, not halted, trigger from Switch 1 is HIGH, motor is idle.
+    if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && triggerState == HIGH && !motorIsMoving) {
+
+      stepper_lastHomeTime = millis();
+      startupHoming_attemptCounter = 0; // Reset recovery attempts because normal cycle ran
+      triggerState = LOW; // Consume the trigger for this cycle
+      motorIsMoving = true;
+      moverPasoCorregido();
+      motorIsMoving = false;
+      Serial.println("contador"); // uart_puts(uart0, "contador\n");
+        // Send message after NEMA move from Switch 1
+
+      // Servo Trigger (from snapshot)
+      if (digitalRead(servoSwitchPin) == LOW) {
+        if (!servo_isHoldingAt90) {
+          myServo.write(90);
+          digitalWrite(8, HIGH); // Set Pin 8 HIGH
+          servo_isHoldingAt90 = true;
+          servo_reached90Time = millis();
+          servo_isActive = true; // As per snapshot
+        }
+      }
+    }
+    // --- End Normal Operation Phase Logic ---
+
+    // --- Normal Operation Stepper Override ---
+    // Active only when not in startup homing, system not halted by startup failure,
+    // stepper motor is idle, and no primary trigger from switchPin is pending.
+    if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving && triggerState == LOW) {
+
+      // Check for 20s inactivity of Switch 1 AND Pin 4 (servoSwitchPin) being pressed
+      if (((millis() - stepper_lastHomeTime) >= normalOp_noHomeTimeout) && (digitalRead(servoSwitchPin) == LOW)) {
+
+        // Perform the override movement
+        // Optional: Serial.println("Normal Op Override Triggered");
+        motorIsMoving = true;
+        moverPasoCorregido(); // Uses the standard movement
+        motorIsMoving = false;
+
+        // After the movement, check if Switch 1 (switchPin) was pressed by this override move.
+        // The ISR for switchPin would have set triggerState to HIGH if it was pressed.
+        if (triggerState == LOW) { // Switch 1 still NOT pressed by the override move
+          Serial.println("vacio"); // Send "vacio" as per user's instruction
+        }
+        // If triggerState is HIGH, the Normal Stepper Cycle logic will handle it in the next loop,
+        // which will update stepper_lastHomeTime and reset startupHoming_attemptCounter.
+        // If triggerState is LOW (override didn't hit home), update stepper_lastHomeTime here
+        // to restart the 20s observation period for this Normal Operation Override path.
+        stepper_lastHomeTime = millis();
+      }
+    }
+    // --- End Normal Operation Stepper Override ---
+
+    // --- Pin 4 (servoSwitchPin) Debouncing and Press Counting START ---
+    int reading_servoSwitch = digitalRead(servoSwitchPin);
+
+    // If the switch changed, due to noise or pressing:
+    if (reading_servoSwitch != servoSwitch_lastState) {
+      servoSwitch_lastDebounceTime = millis(); // Reset the debouncing timer
+    }
+
+    if ((millis() - servoSwitch_lastDebounceTime) > servoSwitch_debounceDelay) {
+      // Whatever the reading is at, it's been there for longer than the debounce
+      // delay, so take it as the actual current state:
+
+      // If the switch state has changed (debounced):
+      if (reading_servoSwitch != servoSwitch_currentState) {
+        servoSwitch_currentState = reading_servoSwitch; // Update the official debounced state
+
+        if (servoSwitch_currentState == LOW) { // Switch was just pressed (debounced)
+          // Only count presses if the system is not halted by other conditions.
+          if (!system_startupHomingFailed && !systemHalted_switch2Max) {
+            switch2_pressCount++;
+            // Optional: Serial.print("Switch 2 Press Count: "); Serial.println(switch2_pressCount);
+          }
+        }
+      }
+    }
+    servoSwitch_lastState = reading_servoSwitch; // Save the current reading for the next loop iteration.
+    // --- Pin 4 (servoSwitchPin) Debouncing and Press Counting END ---
+
+    // --- Switch 2 (Pin 4) Counter Limit Check and Halt Logic START ---
+    if (!systemHalted_switch2Max && (switch2_pressCount >= switch2_maxPressCountC)) {
+      Serial.println("ter"); // uart_puts(uart0, "ter\n");
+      systemHalted_switch2Max = true; // Set the flag to indicate this halt condition is met
+    }
+    // --- Switch 2 (Pin 4) Counter Limit Check and Halt Logic END ---
+
+    // Servo Timed Return to 0 Logic (Snapshot version)
+    if (servo_isHoldingAt90) {
+      if ((millis() - servo_reached90Time) >= servo_DurationG) { // Use new constant name
+        myServo.write(0);
+        digitalWrite(8, LOW); // Set Pin 8 LOW
+        servo_isHoldingAt90 = false;
+        servo_isActive = false;      // Set by snapshot servo logic
+        servo_finishTime = millis(); // Set by snapshot servo logic
+      }
+    }
+    } // End of system Pausa
+ 
+  } // End of if(systemActive_afterCom4)
+}
+
 // ISR for switchPin (Snapshot version)
 void switchAction() {
   unsigned long currentTime = millis();
@@ -281,23 +690,74 @@ void loop() {
           // Ejecutar la lógica una vez inmediatamente
           run_codigo_oscar();
           break;
-        default:
-          Serial.print("Unknown command: ");
-          Serial.println(command);
+      
+        case '2':
+         if (!systemActive_afterCom2) {
+            Serial.println("System activated by command '2'.");
+            systemActive_afterCom2 = true;
+            // Reiniciar estados para homing
+            systemIsInStartupHomingPhase = true;
+            system_startupHomingFailed = false;
+            startupHoming_attemptCounter = 0;
+            stepper_lastHomeTime = millis() - startupHoming_timeout;
+            triggerState = LOW;
+            motorIsMoving = false;
+            // Reiniciar servo
+            servo_isActive = false;
+            servo_isHoldingAt90 = false;
+            myServo.write(0);
+         }
+         run_codigo_oscar();
           break;
+
+        case '3':
+         if (!systemActive_afterCom3) {
+            Serial.println("System activated by command '3'.");
+            systemActive_afterCom3 = true;
+            // Reiniciar estados para homing
+            systemIsInStartupHomingPhase = true;
+            system_startupHomingFailed = false;
+            startupHoming_attemptCounter = 0;
+            stepper_lastHomeTime = millis() - startupHoming_timeout;
+            triggerState = LOW;
+            motorIsMoving = false;
+            // Reiniciar servo
+            servo_isActive = false;
+            servo_isHoldingAt90 = false;
+            myServo.write(0);
+         }
+         run_codigo_oscar();
+          break;
+
+        case '4':
+         if (!systemActive_afterCom4) {
+            Serial.println("System activated by command '4'.");
+            systemActive_afterCom4 = true;
+            // Reiniciar estados para homing
+            systemIsInStartupHomingPhase = true;
+            system_startupHomingFailed = false;
+            startupHoming_attemptCounter = 0;
+            stepper_lastHomeTime = millis() - startupHoming_timeout;
+            triggerState = LOW;
+            motorIsMoving = false;
+            // Reiniciar servo
+            servo_isActive = false;
+            servo_isHoldingAt90 = false;
+            myServo.write(0);
+         }
+         run_codigo_oscar();
+          break;
+      
+      
+        Serial.print("Unknown command: ");
+        Serial.println(command);
+        break;
+        
       }
     }
   }
-
-  // Check for unpause signal
-  if (system_despausa) {
-    system_pausa = true;
-    system_despausa = false;
-  }
-
   // Si el sistema está activo, ejecutar continuamente la lógica
   if (systemActive_afterCom1) {
     run_codigo_oscar();
   }
 }
-  
