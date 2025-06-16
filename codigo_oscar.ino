@@ -16,7 +16,8 @@ const unsigned long servoSwitch_debounceDelay = 50; // 50ms debounce delay
 
 // Switch 2 (Pin 4) press counter and halt logic
 int switch2_pressCount = 0;
-const int switch2_maxPressCount = 10;
+const int switch2_maxPressCount = 3;
+const int switch2_maxPressCountC = 1000;
 bool systemHalted_switch2Max = false;
 
 volatile byte triggerState = LOW; // For stepper motor trigger
@@ -40,8 +41,8 @@ Servo myServo; // Declare Servo object
 // Variables for servo's timed hold logic
 bool servo_isHoldingAt90 = false;
 unsigned long servo_reached90Time = 0;
-const unsigned long servo_Duration = 5000; // 5 seconds for servo hold (renamed)
-
+const unsigned long servo_DurationP = 5000; // 5 seconds for servo hold (renamed)
+const unsigned long servo_DurationG = 8000; // 5 seconds for servo hold (renamed)
 // Variables for managing servo active state and NEMA quiet time
 // These were from a more complex interaction model. Their effect in the snapshot's loop() is minimal.
 bool servo_isActive = false;
@@ -49,7 +50,12 @@ unsigned long servo_finishTime = 0;
 const unsigned long nema_quietTimeAfterServo = 2000;
 
 bool systemActive_afterCom1 = false; // System is initially inactive until "com1" is received
+bool systemActive_afterCom2 = false;
+bool systemActive_afterCom3 = false; 
+bool systemActive_afterCom4 = false; 
 bool system_pausa = true;
+bool system_despausa = false;
+
 
 // Function to wrap existing code
 void run_codigo_oscar() {
@@ -177,7 +183,7 @@ void run_codigo_oscar() {
 
     // Servo Timed Return to 0 Logic (Snapshot version)
     if (servo_isHoldingAt90) {
-      if ((millis() - servo_reached90Time) >= servo_Duration) { // Use new constant name
+      if ((millis() - servo_reached90Time) >= servo_DurationP) { // Use new constant name
         myServo.write(0);
         digitalWrite(8, LOW); // Set Pin 8 LOW
         servo_isHoldingAt90 = false;
@@ -186,9 +192,8 @@ void run_codigo_oscar() {
       }
     }
     } // End of system Pausa
+ 
   } // End of if(systemActive_afterCom1)
-}
-
 // ISR for switchPin (Snapshot version)
 void switchAction() {
   unsigned long currentTime = millis();
@@ -288,5 +293,4 @@ void loop() {
     run_codigo_oscar();
   }
 }
-  }
-}
+  
