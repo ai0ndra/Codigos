@@ -14,6 +14,10 @@ const int switchPin = 2; // Limit switch for stepper motor (Normally Closed cont
 const int servoPin = 5; // Servo motor control pin
 const int servoSwitchPin = 4; // Switch for servo control input (Pin 4)
 
+const int motorReductorPin = 8;
+const int motorVibradorPin = 9;
+const int dosificadoraPin = 10;
+
 // Debouncing variables for servoSwitchPin (Pin 4)
 int servoSwitch_lastState = HIGH;       // Last stable state of the servo switch
 int servoSwitch_currentState;           // Current debounced state of the servo switch
@@ -86,6 +90,16 @@ bool waiting_for_step_after_homing_press = false;
 // Timestamp when Switch 1 was pressed during startup homing
 unsigned long switch1_pressed_during_homing_time = 0; 
 
+// Variables for Dosificadora timing
+unsigned long dosificadora_triggerTime = 0; // Timestamp when servo reached 90, to calculate 200ms delay
+unsigned long dosificadora_startTime = 0;   // Timestamp when dosificadora signal went HIGH, for 500ms duration
+bool dosificadora_pending = false;          // True if 200ms delay is active before dosificadora pulse
+bool dosificadora_active = false;           // True if dosificadora signal is currently HIGH
+
+// Variables for Idle Bottle Search Logic
+int idleBottleSearch_attemptCounter = 0;
+unsigned long lastSwitch1ActivityOrSearchTime = 0; 
+
 
 /*
  * Executes the core operational logic of the system.
@@ -138,10 +152,9 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
   // 3. The ISR for switchPin has NOT already set triggerState.
   // 4. The motor is not already moving.
   // 5. This event was not already processed by ISR path in this cycle.
-  if (nemaQuietTimeJustElapsed && triggerState == LOW && !motorIsMoving && !switch1_processed_by_ISR_this_cycle) {
-      if (digitalRead(switchPin) == LOW) { // Check current state of Switch 1 (Pin 2)
-          canServoBeActivated = true;     // ARM servo activation for this NEMA cycle
-          Serial.println(F("NEMA trigger: Switch 1 pressed post-quiet time (Path 2).")); // Debug
+  if (!systemHalted_switch2Max && nemaQuietTimeJustElapsed && triggerState == LOW && !motorIsMoving && !switch1_processed_by_ISR_this_cycle) {
+      if (digitalRead(switchPin) == LOW) { // Check current state of Switch 1 (Pin 2) initially for this path
+          Serial.println(F("NEMA trigger: Switch 1 pressed post-quiet time (Path 2). Making NEMA move.")); // Debug
           
           motorIsMoving = true;
           moverPasoCorregido();
@@ -150,15 +163,10 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
           stepper_lastHomeTime = millis(); // Update last home/active time
           nemaOverrideAttemptCounter = 0;  // Reset override attempts
           nemaQuietTimeJustElapsed = false; // Consume this one-time trigger event
-
-          // Check Switch 1 state upon completion of NEMA move
-          if (digitalRead(switchPin) == LOW) {
-              // If Switch 1 is (still) pressed, ensure servo is armed and timers reflect Switch 1 activity
-              canServoBeActivated = true; 
-              stepper_lastHomeTime = millis(); 
-              nemaOverrideAttemptCounter = 0;
-              Serial.println(F("Normal Op (Path 2): Switch 1 found LOW post-NEMA. Servo re-armed/confirmed.")); // Debug
-          }
+          canServoBeActivated = true; 
+          Serial.println(F("Normal Op (Path 2): NEMA move complete (triggered by held Switch 1). Servo armed.")); // Debug
+          lastSwitch1ActivityOrSearchTime = millis();
+          idleBottleSearch_attemptCounter = 0;
       }
       // If switchPin was not LOW when nemaQuietTimeJustElapsed was true, 
       // nemaQuietTimeJustElapsed will be reset to false in the next cycle's update block anyway.
@@ -182,7 +190,13 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
                   systemIsInStartupHomingPhase = false; // Exit homing phase
                   stepper_lastHomeTime = millis();      // Mark successful home time
                   startupHoming_attemptCounter = 0;     // Reset attempt counter
-                  canServoBeActivated = true;           // This NEMA move enables servo
+                  if (digitalRead(switchPin) == LOW) {
+                    triggerState = HIGH; // Signal that a bottle is positioned, for Path 1 to handle next cycle
+                    Serial.println(F("Startup Homing (2s delay path): Switch 1 LOW. Triggering Path 1.")); // Debug
+                  } else {
+                    Serial.println(F("Startup Homing (2s delay path): Switch 1 NOT LOW post-NEMA.")); // Debug
+                  }
+                  canServoBeActivated = false; // This path does not arm the servo directly
                   nemaOverrideAttemptCounter = 0;       // Reset NEMA override counter
 
                   waiting_for_step_after_homing_press = false; // Reset this flag, delayed step is done
@@ -207,10 +221,14 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
                           }
 
                           myServo.write(90);
-                          digitalWrite(8, HIGH);
+                          digitalWrite(motorVibradorPin, HIGH);
                           servo_isHoldingAt90 = true;
                           servo_reached90Time = millis();
                           servo_isActive = true;
+                          dosificadora_triggerTime = millis(); // Capture time when servo is commanded to 90
+                          dosificadora_pending = true;
+                          dosificadora_active = false;        // Ensure it's reset if re-triggering
+                          digitalWrite(dosificadoraPin, LOW); // Ensure it's initially LOW if re-triggering
                           allowNemaMovement = false;      // Disallow NEMA now servo is active
                           canServoBeActivated = false;      // Consume the activation permission
                           nemaQuietTimeJustElapsed = false; // Reset this flag too
@@ -233,67 +251,71 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
       } 
       // Path B: Timeout-driven recovery step (only if not waiting for delayed step from Path A)
       else if ((millis() - stepper_lastHomeTime) >= startupHoming_timeout) {
-          // This is the existing logic for timeout-based recovery attempts.
-          if (startupHoming_attemptCounter < 3) { // Only attempt if counter < 3
-              if (allowNemaMovement) { // Respect NEMA quiet time
-                  Serial.print(F("Startup Homing Attempt #")); // Debug
-                  Serial.println(startupHoming_attemptCounter + 1);
+          if (digitalRead(switchPin) == LOW) { // NEW: Priority check if Switch 1 is HELD LOW on timeout
+              Serial.println(F("Startup Homing: Timeout override - Switch 1 HELD. Transitioning to 2s wait.")); // Debug
+              switch1_pressed_during_homing_time = millis();
+              waiting_for_step_after_homing_press = true;
+              triggerState = LOW; // Consume any ISR trigger
+              system_startupHomingFailed = false; // Clear previous failure state
+              startupHoming_attemptCounter = 0;   // Reset attempts
+              // This path effectively bypasses the normal attempt counting and failure for this timeout event.
+          } else { // Switch 1 is NOT HELD LOW on timeout, proceed with normal attempt/failure logic
+              // Existing logic for attempts < 3 (Path B)
+              if (startupHoming_attemptCounter < 3) {
+                  if (allowNemaMovement) { // Respect NEMA quiet time
+                      Serial.print(F("Startup Homing Attempt #")); // Debug
+                      Serial.println(startupHoming_attemptCounter + 1);
 
-                  motorIsMoving = true;
-                  moverPasoCorregido();
-                  motorIsMoving = false;
+                      motorIsMoving = true;
+                      moverPasoCorregido();
+                      motorIsMoving = false;
 
-                  // Check if the recovery NEMA move successfully pressed Switch 1
-                  if (digitalRead(switchPin) == LOW) { // Switch 1 HELD LOW after recovery move
-                      Serial.println(F("Startup Homing: Recovery NEMA step SUCCESSFUL - Switch 1 is HELD LOW.")); // Debug
-
-                      systemIsInStartupHomingPhase = false;    // Exit homing phase
-                      stepper_lastHomeTime = millis();          // Mark successful home time
-                      startupHoming_attemptCounter = 0;         // Reset attempt counter
-                      canServoBeActivated = true;               // ARM SERVO
-                      nemaOverrideAttemptCounter = 0;           // Reset NEMA override counter
-                      triggerState = LOW;                       // Ensure triggerState is low (as we've handled this press)
-                      waiting_for_step_after_homing_press = false; // Ensure we are not waiting for a delayed step
-                  } else { 
-                      // Switch 1 NOT HELD LOW after recovery move.
-                      // A brief click might have set triggerState HIGH via ISR. If so, clear it.
-                      if (triggerState == HIGH) {
-                          Serial.println(F("Startup Homing: Recovery NEMA step caused brief Switch 1 press (ISR), but not held. Attempt failed.")); // Debug
-                          triggerState = LOW; // Consume the brief press from this failed recovery.
-                      } else {
-                          Serial.println(F("Startup Homing: Recovery NEMA step FAILED to hit Switch 1 at all.")); // Debug
+                      if (digitalRead(switchPin) == LOW) { // Check if Switch 1 is HELD LOW *after this NEMA move*
+                          Serial.println(F("Startup Homing: Recovery NEMA HELD Switch 1. Transitioning to 2s wait."));
+                          switch1_pressed_during_homing_time = millis();
+                          waiting_for_step_after_homing_press = true;
+                          triggerState = LOW; 
+                      } else { // Switch 1 was NOT held low after the recovery NEMA move
+                          if (triggerState == HIGH) { 
+                              Serial.println(F("Startup Homing: Recovery NEMA caused brief Switch 1 press (ISR), but not held. Attempt failed."));
+                              triggerState = LOW; 
+                          } else {
+                              Serial.println(F("Startup Homing: Recovery NEMA FAILED to hit Switch 1 at all."));
+                          }
+                          startupHoming_attemptCounter++;
+                          stepper_lastHomeTime = millis(); 
                       }
-                      // This attempt failed to secure a HELD LOW on Switch 1.
-                      startupHoming_attemptCounter++; 
-                      stepper_lastHomeTime = millis(); // Reset timer for the next 10s wait
+                  } else { // NEMA movement is NOT allowed
+                      Serial.println(F("Startup Homing: Recovery NEMA move deferred by allowNemaMovement."));
+                      stepper_lastHomeTime = millis(); 
                   }
-              } else { // NEMA movement is NOT allowed right now (e.g., servo quiet time)
-                  Serial.println(F("Startup Homing: Recovery NEMA move deferred by allowNemaMovement."));
-                  stepper_lastHomeTime = millis(); // Reset timer to start a new 10s observation
-                  // DO NOT increment startupHoming_attemptCounter here, as the attempt was deferred.
               }
-          } 
-          
-          // This check is now outside the 'if (allowNemaMovement)' block,
-          // so it correctly processes failure if attempts are exhausted,
-          // regardless of whether the last attempt was made or deferred.
-          if (startupHoming_attemptCounter >= 3) { 
-              if (!system_startupHomingFailed) { 
-                  Serial.println(F("vacio")); 
-                  system_startupHomingFailed = true;
+              
+              // Existing logic for attempts >= 3 (Failure condition)
+              // This check should only be evaluated if the above 'digitalRead(switchPin) == LOW' was false,
+              // and after an attempt (if <3) has been made and potentially incremented the counter.
+              if (startupHoming_attemptCounter >= 3) { 
+                  if (!system_startupHomingFailed) { 
+                      Serial.println(F("vacio")); 
+                      system_startupHomingFailed = true;
+                      digitalWrite(motorReductorPin, LOW); 
+                      canServoBeActivated = false; // Ensure servo cannot activate if homing fails
+                      digitalWrite(dosificadoraPin, LOW);
+                      dosificadora_pending = false;
+                      dosificadora_active = false;
+                  }
+                  systemIsInStartupHomingPhase = false; 
               }
-              systemIsInStartupHomingPhase = false; 
           }
       }
   }
   // --- End Startup Homing Logic Block ---
 
-  // --- Normal Operation Phase Logic ---
+  // --- Normal NEMA Operation from ISR (Path 1) ---
   // This block runs if not in startup homing, homing hasn't failed, the limit switch (triggerState) is HIGH, and motor is idle.
-  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && triggerState == HIGH && !motorIsMoving) {
+  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !systemHalted_switch2Max && triggerState == HIGH && !motorIsMoving) {
     // ISR detected a press (triggerState is HIGH). This path (Path 1) attempts to make a NEMA move.
-    // Servo activation is armed regardless of whether NEMA moves immediately or is deferred.
-    canServoBeActivated = true; // Armed by Switch 1 detection via ISR/triggerState
+    // canServoBeActivated is now set *after* the NEMA move based on switchPin state.
 
     if (allowNemaMovement) {
       // NEMA movement is allowed
@@ -301,65 +323,123 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
       moverPasoCorregido(); // Perform the main stepper motor movement
       motorIsMoving = false;
       
-      // Serial.println("contador"); // "contador" is now tied to servo activation
-
-      // Update states after successful NEMA operation triggered by switchPin
-      // canServoBeActivated = true; // Moved earlier in this block
       stepper_lastHomeTime = millis(); // Update last home/active time
       nemaOverrideAttemptCounter = 0;  // Reset override attempts as primary mechanism worked
       triggerState = LOW;             // Consume the trigger
       switch1_processed_by_ISR_this_cycle = true; // Mark this Switch 1 event as processed by ISR path
-
-      // Check Switch 1 state upon completion of NEMA move
-      if (digitalRead(switchPin) == LOW) {
-          // If Switch 1 is (still) pressed, ensure servo is armed and timers reflect Switch 1 activity
-          canServoBeActivated = true; 
-          stepper_lastHomeTime = millis(); 
-          nemaOverrideAttemptCounter = 0;
-          Serial.println(F("Normal Op (ISR Path): Switch 1 found LOW post-NEMA. Servo re-armed/confirmed.")); // Debug
-      }
+      canServoBeActivated = true; 
+      Serial.println(F("Normal Op (ISR Path): NEMA move complete (triggered by Switch 1). Servo armed.")); // Debug
+      lastSwitch1ActivityOrSearchTime = millis();
+      idleBottleSearch_attemptCounter = 0;
     } else {
       // NEMA movement deferred. 
+      // If NEMA movement is deferred, Switch 1 was pressed (triggerState was HIGH), 
+      // so we can assume we want to activate servo once NEMA is allowed again.
+      // However, the standard is now to check *after* a NEMA move.
+      // For now, if deferred, we don't immediately know the future state of switchPin post-NEMA.
+      // Let's assume if deferred, the intent from the ISR trigger still means canServoBeActivated should be true.
+      // This is a bit of a dilemma: Path 1 implies an event occurred. If deferred, when should canServoBeActivated be set?
+      // For consistency, it should be set after its NEMA move. But Path 2 sets it based on initial check.
+      // Given the new rule "set after NEMA move", if Path 1 NEMA is deferred, canServoBeActivated shouldn't be set here.
+      // It will be set by Path 2 if switchPin is still LOW when Path 2 eventually runs.
+      // Therefore, removing speculative canServoBeActivated = true from here.
+      // The original `canServoBeActivated = true;` at the beginning of the block is also removed.
+      // If Path 1 NEMA move is deferred, it implies `canServoBeActivated` will be determined by a subsequent Path 2 execution.
+      // If the trigger is consumed and NEMA doesn't move, servo shouldn't be armed based on this stale trigger.
+      canServoBeActivated = false; // Explicitly false if NEMA move is deferred for this path.
       // Consume the trigger to prevent re-triggering Path 1 continuously while NEMA is disallowed.
       // Servo remains armed by canServoBeActivated = true from above.
       triggerState = LOW; 
       switch1_processed_by_ISR_this_cycle = true; // Indicate Switch 1 event was processed (even if NEMA didn't move)
       // Serial.println(F("NEMA movement deferred in Normal Op (Path 1) - trigger consumed."));
     }
+    // (Servo Trigger Logic is GONE from here)
+  }
+  // --- End Normal NEMA Operation from ISR (Path 1) ---
 
-    // Servo Trigger Logic - now uses the debounced flag
-    if (servoSwitch_just_pressed_debounced) {
-      servoSwitch_just_pressed_debounced = false; // Consume the debounced press event
+  // --- Servo Activation Logic ---
+  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed) {
+    // Check if servoSwitchPin (pin 4) is currently in the active state (LOW, debounced)
+    // AND servo is not already at 90 AND servo is allowed to be activated.
+    if (servoSwitch_currentState == LOW && !servo_isHoldingAt90 && canServoBeActivated) {
+      // Only proceed if system is not already halted by max presses.
+      if (!systemHalted_switch2Max) { 
+        Serial.println(F("contador")); 
+        switch2_pressCount++; // Count this activation
 
-      // And servo is not already at 90, AND it's allowed to be activated
-      if (!servo_isHoldingAt90 && canServoBeActivated) { 
-        Serial.println(F("contador")); // "contador" now sent upon successful servo activation
-        switch2_pressCount++;          // Increment press count only on successful servo activation
-
-        // Check for "ter" condition immediately after successful activation and count increment
-        if (!systemHalted_switch2Max && (switch2_pressCount >= current_switch2_maxPressCount)) {
-            Serial.println(F("ter"));
-            systemHalted_switch2Max = true;
+        if (switch2_pressCount >= current_switch2_maxPressCount) {
+          Serial.println(F("ter"));
+          systemHalted_switch2Max = true;
+          digitalWrite(motorReductorPin, LOW); 
+          digitalWrite(dosificadoraPin, LOW);
+          dosificadora_pending = false;
+          dosificadora_active = false;
+          // canServoBeActivated will be set to false below, covering this halt.
         }
         
-        myServo.write(90);        // Move servo to 90 degrees
-        digitalWrite(8, HIGH);    // Set Pin 8 HIGH (indicator for servo active)
-        servo_isHoldingAt90 = true; // Update servo state
-        servo_reached90Time = millis(); // Record time servo reached 90
-        servo_isActive = true;      // Mark servo as active
-        allowNemaMovement = false;  // Prevent NEMA movement while servo is active
-        canServoBeActivated = false; // Servo activation permission consumed
-        nemaQuietTimeJustElapsed = false; // Reset flag as servo is now active (and NEMA movement is disallowed)
+        myServo.write(90);        
+        digitalWrite(motorVibradorPin, HIGH);
+        servo_isHoldingAt90 = true; 
+        servo_reached90Time = millis(); 
+        servo_isActive = true;     
+        dosificadora_triggerTime = millis(); // Capture time when servo is commanded to 90
+        dosificadora_pending = true;
+        dosificadora_active = false;        // Ensure it's reset if re-triggering
+        digitalWrite(dosificadoraPin, LOW); // Ensure it's initially LOW if re-triggering
+        allowNemaMovement = false;  
+        canServoBeActivated = false; // Consume activation permission
+        nemaQuietTimeJustElapsed = false;
       }
     }
   }
-  // --- End Normal Operation Phase Logic ---
+  // --- End Servo Activation Logic ---
+
+  // --- Idle Bottle-Searching Logic ---
+  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !systemHalted_switch2Max &&
+      !motorIsMoving && triggerState == LOW && allowNemaMovement) {
+    
+    if (idleBottleSearch_attemptCounter < 3 && (millis() - lastSwitch1ActivityOrSearchTime >= 5000)) {
+      Serial.println(F("Idle Search: 5s elapsed. Attempting NEMA step.")); // Debug
+      
+      motorIsMoving = true;
+      moverPasoCorregido();
+      motorIsMoving = false;
+      
+      lastSwitch1ActivityOrSearchTime = millis(); // Reset timer after the step
+      idleBottleSearch_attemptCounter++;
+
+      if (digitalRead(switchPin) == LOW) { // Bottle found after idle search step
+        triggerState = HIGH; // Signal that a bottle is now at Switch 1 for Path 1 to handle
+        idleBottleSearch_attemptCounter = 0; // Reset search counter
+        lastSwitch1ActivityOrSearchTime = millis(); // Update activity time due to successful search
+        Serial.println(F("Idle Search: Bottle found! Triggering Path 1 for positioning.")); // Debug
+        canServoBeActivated = false; // This path does not arm the servo directly
+      } else { // Bottle NOT found after idle search step
+        canServoBeActivated = false; // Ensure it's false if no bottle
+        Serial.print(F("Idle Search: No bottle. Attempt #")); 
+        Serial.println(idleBottleSearch_attemptCounter); // Debug
+        
+        if (idleBottleSearch_attemptCounter >= 3) {
+          Serial.println(F("vacio")); // Send "vacio" after 3 failed search attempts
+          system_startupHomingFailed = true; // Use existing flag for system halt
+          digitalWrite(motorReductorPin, LOW);
+          canServoBeActivated = false;
+          digitalWrite(dosificadoraPin, LOW); 
+          dosificadora_pending = false; 
+          dosificadora_active = false;
+          // Any other necessary halt actions (e.g., stopping other motors if they were added)
+          // This effectively halts the system for this cycle type.
+        }
+      }
+    }
+  }
+  // --- End Idle Bottle-Searching Logic ---
 
   // --- Normal Operation Stepper Override ---
   // This block allows a stepper move if the system is in normal operation, not failed homing, motor is idle,
   // limit switch (triggerState) is LOW, and a timeout has occurred with the servo switch pressed.
   // It also now includes the allowNemaMovement check.
-  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving && triggerState == LOW && allowNemaMovement) {
+  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !systemHalted_switch2Max && !motorIsMoving && triggerState == LOW && allowNemaMovement) {
     // Check for 10s inactivity of Switch 1 (stepper_lastHomeTime) AND Pin 4 (servoSwitchPin) being pressed
     if (((millis() - stepper_lastHomeTime) >= normalOp_noHomeTimeout) && (digitalRead(servoSwitchPin) == LOW)) {
       
@@ -412,16 +492,39 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
   // --- Switch 2 (Pin 4) Counter Limit Check and Halt Logic START --- (This block is now removed, logic integrated above)
   // --- Switch 2 (Pin 4) Counter Limit Check and Halt Logic END ---
 
+  // --- Dosificadora Logic ---
+  // Check if 200ms pending time has elapsed to activate dosificadora
+  if (dosificadora_pending && servo_isHoldingAt90 && (millis() - dosificadora_triggerTime >= 200)) {
+    digitalWrite(dosificadoraPin, HIGH);
+    dosificadora_active = true;
+    dosificadora_startTime = millis(); // Record when it actually started
+    dosificadora_pending = false;
+    Serial.println(F("Dosificadora ACTIVATED (200ms delay passed)")); // Debug
+  }
+
+  // Check if 500ms active duration has elapsed to deactivate dosificadora
+  if (dosificadora_active && (millis() - dosificadora_startTime >= 500)) {
+    digitalWrite(dosificadoraPin, LOW);
+    dosificadora_active = false;
+    Serial.println(F("Dosificadora DEACTIVATED (500ms duration passed)")); // Debug
+  }
+  // --- End Dosificadora Logic ---
+
   // --- Servo Timed Return to 0 Logic ---
   // If servo is at 90 degrees, check if its hold duration has elapsed.
   if (servo_isHoldingAt90) {
     if ((millis() - servo_reached90Time) >= current_servo_Duration) { // If hold time is over
       myServo.write(0);        // Return servo to 0 degrees
-      digitalWrite(8, LOW);    // Set Pin 8 LOW (indicator for servo inactive)
+      digitalWrite(motorVibradorPin, LOW);
+      digitalWrite(dosificadoraPin, LOW);
+      dosificadora_pending = false;
+      dosificadora_active = false;
       servo_isHoldingAt90 = false; // Update servo state
       servo_isActive = false;      // Mark servo as inactive
       servo_finishTime = millis(); // Record time servo returned (informational)
       servoBecameInactiveTime = millis(); // Record time for NEMA quiet period logic
+      lastSwitch1ActivityOrSearchTime = millis(); // Reset timer as a servo cycle just completed
+      idleBottleSearch_attemptCounter = 0;
     }
   }
 }
@@ -518,8 +621,13 @@ void setup() {
   pinMode(stepPin, OUTPUT);
   pinMode(switchPin, INPUT_PULLUP);     // Stepper limit switch with internal pull-up
   pinMode(servoSwitchPin, INPUT_PULLUP); // Servo control switch with internal pull-up
-  pinMode(8, OUTPUT);                   // Pin 8 as an output (e.g., servo active indicator)
-  digitalWrite(8, LOW);                 // Initialize Pin 8 to LOW
+  
+  pinMode(motorReductorPin, OUTPUT);
+  digitalWrite(motorReductorPin, LOW);
+  pinMode(motorVibradorPin, OUTPUT);
+  digitalWrite(motorVibradorPin, LOW);
+  pinMode(dosificadoraPin, OUTPUT);
+  digitalWrite(dosificadoraPin, LOW);
 
   // Initialize servo
   myServo.attach(servoPin); // Attach servo to its pin
@@ -538,12 +646,12 @@ void setup() {
   Serial.println(F("Starting initial servo sequence..."));
 
   myServo.write(90);      // Move servo to 90 degrees
-  digitalWrite(8, HIGH);  // Set Pin 8 HIGH (indicator)
+  digitalWrite(motorVibradorPin, HIGH);
   
   delay(5000);            // Hold for 5 seconds
 
   myServo.write(0);       // Move servo back to 0 degrees
-  digitalWrite(8, LOW);   // Set Pin 8 LOW
+  digitalWrite(motorVibradorPin, LOW);
   
   Serial.println(F("Initial servo sequence complete."));
 
@@ -571,19 +679,29 @@ void loop() {
           if (serialBufferIndex > 0) { // Process only if buffer is not empty
               if (strcmp(serialBuffer, "pausa") == 0) {
                   system_pausa = true;
+                  digitalWrite(motorReductorPin, LOW);
                   Serial.println(F("System Paused (Command pausa)."));
                   myServo.write(0);
-                  digitalWrite(8, LOW); 
+                  digitalWrite(motorVibradorPin, LOW);
+                  digitalWrite(dosificadoraPin, LOW);
+                  dosificadora_pending = false;
+                  dosificadora_active = false;
+                  // Ensure pin 8 specific old indicator logic is not present if motorReductorPin handles it
                   servo_isHoldingAt90 = false;
                   servo_isActive = false;
                   servoBecameInactiveTime = millis();
+                  canServoBeActivated = false; // System paused, servo cannot be activated
               } else if (strcmp(serialBuffer, "despausa") == 0) {
                   system_pausa = false;
+                  if (systemActive_afterCom1 || systemActive_afterCom2 || systemActive_afterCom3 || systemActive_afterCom4) {
+                    digitalWrite(motorReductorPin, HIGH);
+                  }
                   Serial.println(F("System Resumed (Command despausa)."));
               } else if (strcmp(serialBuffer, "CMD:1") == 0) {
                   if (!systemActive_afterCom1) {
                       Serial.println(F("System activated by command '1'.")); // Message can stay as is or be updated
                       systemActive_afterCom1 = true;
+                      digitalWrite(motorReductorPin, HIGH); 
                       systemIsInStartupHomingPhase = true;
                       system_startupHomingFailed = false;
                       startupHoming_attemptCounter = 0;
@@ -593,7 +711,7 @@ void loop() {
                       servo_isActive = false;
                       servo_isHoldingAt90 = false;
                       myServo.write(0);
-                      digitalWrite(8, LOW);
+                      digitalWrite(motorVibradorPin, LOW); // Ensure vibrator is OFF at CMD start
                       servoBecameInactiveTime = millis();
                       switch2_pressCount = 0;
                       systemHalted_switch2Max = false;
@@ -601,6 +719,8 @@ void loop() {
                       nemaOverrideAttemptCounter = 0;
                       waiting_for_step_after_homing_press = false;
                       switch1_pressed_during_homing_time = 0;
+                      idleBottleSearch_attemptCounter = 0;
+                      lastSwitch1ActivityOrSearchTime = millis();
                   }
                   systemActive_afterCom2 = false;
                   systemActive_afterCom3 = false;
@@ -609,6 +729,7 @@ void loop() {
                   if (!systemActive_afterCom2) {
                       Serial.println(F("System activated by command '2'.")); // Message can stay as is or be updated
                       systemActive_afterCom2 = true;
+                      digitalWrite(motorReductorPin, HIGH); 
                       systemIsInStartupHomingPhase = true;
                       system_startupHomingFailed = false;
                       startupHoming_attemptCounter = 0;
@@ -618,7 +739,7 @@ void loop() {
                       servo_isActive = false;
                       servo_isHoldingAt90 = false;
                       myServo.write(0);
-                      digitalWrite(8, LOW);
+                      digitalWrite(motorVibradorPin, LOW); // Ensure vibrator is OFF at CMD start
                       servoBecameInactiveTime = millis();
                       switch2_pressCount = 0;
                       systemHalted_switch2Max = false;
@@ -626,6 +747,8 @@ void loop() {
                       nemaOverrideAttemptCounter = 0;
                       waiting_for_step_after_homing_press = false;
                       switch1_pressed_during_homing_time = 0;
+                      idleBottleSearch_attemptCounter = 0;
+                      lastSwitch1ActivityOrSearchTime = millis();
                   }
                   systemActive_afterCom1 = false;
                   systemActive_afterCom3 = false;
@@ -634,6 +757,7 @@ void loop() {
                   if (!systemActive_afterCom3) {
                       Serial.println(F("System activated by command '3'.")); // Message can stay as is or be updated
                       systemActive_afterCom3 = true;
+                      digitalWrite(motorReductorPin, HIGH); 
                       systemIsInStartupHomingPhase = true;
                       system_startupHomingFailed = false;
                       startupHoming_attemptCounter = 0;
@@ -643,7 +767,7 @@ void loop() {
                       servo_isActive = false;
                       servo_isHoldingAt90 = false;
                       myServo.write(0);
-                      digitalWrite(8, LOW);
+                      digitalWrite(motorVibradorPin, LOW); // Ensure vibrator is OFF at CMD start
                       servoBecameInactiveTime = millis();
                       switch2_pressCount = 0;
                       systemHalted_switch2Max = false;
@@ -651,6 +775,8 @@ void loop() {
                       nemaOverrideAttemptCounter = 0;
                       waiting_for_step_after_homing_press = false;
                       switch1_pressed_during_homing_time = 0;
+                      idleBottleSearch_attemptCounter = 0;
+                      lastSwitch1ActivityOrSearchTime = millis();
                   }
                   systemActive_afterCom1 = false;
                   systemActive_afterCom2 = false;
@@ -659,6 +785,7 @@ void loop() {
                   if (!systemActive_afterCom4) {
                       Serial.println(F("System activated by command '4'.")); // Message can stay as is or be updated
                       systemActive_afterCom4 = true;
+                      digitalWrite(motorReductorPin, HIGH); 
                       systemIsInStartupHomingPhase = true;
                       system_startupHomingFailed = false;
                       startupHoming_attemptCounter = 0;
@@ -668,7 +795,7 @@ void loop() {
                       servo_isActive = false;
                       servo_isHoldingAt90 = false;
                       myServo.write(0);
-                      digitalWrite(8, LOW);
+                      digitalWrite(motorVibradorPin, LOW); // Ensure vibrator is OFF at CMD start
                       servoBecameInactiveTime = millis();
                       switch2_pressCount = 0;
                       systemHalted_switch2Max = false;
@@ -676,6 +803,8 @@ void loop() {
                       nemaOverrideAttemptCounter = 0;
                       waiting_for_step_after_homing_press = false;
                       switch1_pressed_during_homing_time = 0;
+                      idleBottleSearch_attemptCounter = 0;
+                      lastSwitch1ActivityOrSearchTime = millis();
                   }
                   systemActive_afterCom1 = false;
                   systemActive_afterCom2 = false;
