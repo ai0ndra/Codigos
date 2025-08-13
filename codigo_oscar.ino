@@ -6,18 +6,21 @@ char serialBuffer[SERIAL_BUFFER_SIZE];
 int serialBufferIndex = 0;
 
 // Pin definitions
-const int dirPin = 6; // Stepper motor direction pin
-const int stepPin = 7; // Stepper motor step pin
-const int switchPin = 2; // Limit switch for stepper motor (Normally Closed contact)
+const int dirPin = 10; // Stepper motor direction pin
+const int stepPin = 11; // Stepper motor step pin
+const int switchPin = 27; // Limit switch for stepper motor (Normally Closed contact)
 
 // Servo related pins
-const int servoPin = 5; // Servo motor control pin
-const int servoSwitchPin = 4; // Switch for servo control input (Pin 4)
+const int servoPin = 7; // Servo motor control pin
+const int servoSwitchPin = 22; // Switch for servo control input (Pin 4)
 
-const int motorReductorPin = 8;
-const int motorVibradorPin = 9;
-const int dosificadoraPin = 10;
+const int motorReductorPin = 18;
+const int motorVibradorPin = 19;
+const int dosificadoraPin = 26;
 
+const int pin12_output_pin = 20;
+bool pin12_is_active = false;
+unsigned long pin12_start_time = 0;
 // Debouncing variables for servoSwitchPin (Pin 4)
 int servoSwitch_lastState = HIGH;       // Last stable state of the servo switch
 int servoSwitch_currentState;           // Current debounced state of the servo switch
@@ -26,7 +29,7 @@ const unsigned long servoSwitch_debounceDelay = 50; // Debounce time in millisec
 
 // Switch 2 (Pin 4) press counter and halt logic
 int switch2_pressCount = 0;                 // Counter for presses of servoSwitchPin
-const int switch2_maxPressCount = 3;        // Max press count for normal modes (e.g., Com1, Com3)
+const int switch2_maxPressCount = 10;        // Max press count for normal modes (e.g., Com1, Com3)
 const int switch2_maxPressCountC = 1000;    // Max press count for continuous modes (e.g., Com2, Com4) - effectively infinite for typical use
 bool systemHalted_switch2Max = false;       // Flag: true if system is halted due to max switch 2 presses
 
@@ -152,7 +155,7 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
   // 3. The ISR for switchPin has NOT already set triggerState.
   // 4. The motor is not already moving.
   // 5. This event was not already processed by ISR path in this cycle.
-  if (!systemHalted_switch2Max && nemaQuietTimeJustElapsed && triggerState == LOW && !motorIsMoving && !switch1_processed_by_ISR_this_cycle) {
+  if (nemaQuietTimeJustElapsed && triggerState == LOW && !motorIsMoving && !switch1_processed_by_ISR_this_cycle) {
       if (digitalRead(switchPin) == LOW) { // Check current state of Switch 1 (Pin 2) initially for this path
           Serial.println(F("NEMA trigger: Switch 1 pressed post-quiet time (Path 2). Making NEMA move.")); // Debug
           
@@ -163,8 +166,12 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
           stepper_lastHomeTime = millis(); // Update last home/active time
           nemaOverrideAttemptCounter = 0;  // Reset override attempts
           nemaQuietTimeJustElapsed = false; // Consume this one-time trigger event
-          canServoBeActivated = true; 
-          Serial.println(F("Normal Op (Path 2): NEMA move complete (triggered by held Switch 1). Servo armed.")); // Debug
+          canServoBeActivated = (digitalRead(switchPin) == LOW); // Set based on actual bottle presence post-move
+          if(canServoBeActivated) {
+              Serial.println(F("Normal Op (Path 2): Switch 1 found LOW post-NEMA. Servo armed.")); // Debug
+          } else {
+              Serial.println(F("Normal Op (Path 2): Switch 1 NOT LOW post-NEMA. Servo NOT armed.")); // Debug
+          }
           lastSwitch1ActivityOrSearchTime = millis();
           idleBottleSearch_attemptCounter = 0;
       }
@@ -190,13 +197,7 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
                   systemIsInStartupHomingPhase = false; // Exit homing phase
                   stepper_lastHomeTime = millis();      // Mark successful home time
                   startupHoming_attemptCounter = 0;     // Reset attempt counter
-                  if (digitalRead(switchPin) == LOW) {
-                    triggerState = HIGH; // Signal that a bottle is positioned, for Path 1 to handle next cycle
-                    Serial.println(F("Startup Homing (2s delay path): Switch 1 LOW. Triggering Path 1.")); // Debug
-                  } else {
-                    Serial.println(F("Startup Homing (2s delay path): Switch 1 NOT LOW post-NEMA.")); // Debug
-                  }
-                  canServoBeActivated = false; // This path does not arm the servo directly
+                  canServoBeActivated = (digitalRead(switchPin) == LOW); // Set based on actual bottle presence
                   nemaOverrideAttemptCounter = 0;       // Reset NEMA override counter
 
                   waiting_for_step_after_homing_press = false; // Reset this flag, delayed step is done
@@ -313,7 +314,7 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
 
   // --- Normal NEMA Operation from ISR (Path 1) ---
   // This block runs if not in startup homing, homing hasn't failed, the limit switch (triggerState) is HIGH, and motor is idle.
-  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !systemHalted_switch2Max && triggerState == HIGH && !motorIsMoving) {
+  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && triggerState == HIGH && !motorIsMoving) {
     // ISR detected a press (triggerState is HIGH). This path (Path 1) attempts to make a NEMA move.
     // canServoBeActivated is now set *after* the NEMA move based on switchPin state.
 
@@ -327,10 +328,15 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
       nemaOverrideAttemptCounter = 0;  // Reset override attempts as primary mechanism worked
       triggerState = LOW;             // Consume the trigger
       switch1_processed_by_ISR_this_cycle = true; // Mark this Switch 1 event as processed by ISR path
-      canServoBeActivated = true; 
-      Serial.println(F("Normal Op (ISR Path): NEMA move complete (triggered by Switch 1). Servo armed.")); // Debug
+      canServoBeActivated = (digitalRead(switchPin) == LOW); // Set based on actual bottle presence post-move
+      if(canServoBeActivated) {
+          Serial.println(F("Normal Op (ISR Path): Switch 1 found LOW post-NEMA. Servo armed.")); // Debug
+      } else {
+          Serial.println(F("Normal Op (ISR Path): Switch 1 NOT LOW post-NEMA. Servo NOT armed.")); // Debug
+      }
       lastSwitch1ActivityOrSearchTime = millis();
       idleBottleSearch_attemptCounter = 0;
+      // The old inner if(digitalRead(switchPin)==LOW) that re-confirmed arming is now replaced by the line above.
     } else {
       // NEMA movement deferred. 
       // If NEMA movement is deferred, Switch 1 was pressed (triggerState was HIGH), 
@@ -366,6 +372,14 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
       if (!systemHalted_switch2Max) { 
         Serial.println(F("contador")); 
         switch2_pressCount++; // Count this activation
+         if (switch2_pressCount > 0 && switch2_pressCount % 20 == 0) {
+          if (!pin12_is_active) { // Only activate if not already in an 8-second HIGH period
+            digitalWrite(pin12_output_pin, HIGH);
+            pin12_is_active = true;
+            pin12_start_time = millis();
+            // Optional: Serial.println(F("Pin 12 ACTIVATED for 8 seconds."));
+          }
+        }
 
         if (switch2_pressCount >= current_switch2_maxPressCount) {
           Serial.println(F("ter"));
@@ -409,11 +423,10 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
       idleBottleSearch_attemptCounter++;
 
       if (digitalRead(switchPin) == LOW) { // Bottle found after idle search step
-        triggerState = HIGH; // Signal that a bottle is now at Switch 1 for Path 1 to handle
+        canServoBeActivated = true;
         idleBottleSearch_attemptCounter = 0; // Reset search counter
-        lastSwitch1ActivityOrSearchTime = millis(); // Update activity time due to successful search
-        Serial.println(F("Idle Search: Bottle found! Triggering Path 1 for positioning.")); // Debug
-        canServoBeActivated = false; // This path does not arm the servo directly
+        // lastSwitch1ActivityOrSearchTime will be updated again if servo activates or by next ISR event
+        Serial.println(F("Idle Search: Bottle found and servo armed!")); // Debug
       } else { // Bottle NOT found after idle search step
         canServoBeActivated = false; // Ensure it's false if no bottle
         Serial.print(F("Idle Search: No bottle. Attempt #")); 
@@ -439,7 +452,7 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
   // This block allows a stepper move if the system is in normal operation, not failed homing, motor is idle,
   // limit switch (triggerState) is LOW, and a timeout has occurred with the servo switch pressed.
   // It also now includes the allowNemaMovement check.
-  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !systemHalted_switch2Max && !motorIsMoving && triggerState == LOW && allowNemaMovement) {
+  if (!systemIsInStartupHomingPhase && !system_startupHomingFailed && !motorIsMoving && triggerState == LOW && allowNemaMovement) {
     // Check for 10s inactivity of Switch 1 (stepper_lastHomeTime) AND Pin 4 (servoSwitchPin) being pressed
     if (((millis() - stepper_lastHomeTime) >= normalOp_noHomeTimeout) && (digitalRead(servoSwitchPin) == LOW)) {
       
@@ -494,7 +507,7 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
 
   // --- Dosificadora Logic ---
   // Check if 200ms pending time has elapsed to activate dosificadora
-  if (dosificadora_pending && servo_isHoldingAt90 && (millis() - dosificadora_triggerTime >= 200)) {
+  if (dosificadora_pending && servo_isHoldingAt90 && (millis() - dosificadora_triggerTime >= 500)) {
     digitalWrite(dosificadoraPin, HIGH);
     dosificadora_active = true;
     dosificadora_startTime = millis(); // Record when it actually started
@@ -503,13 +516,18 @@ void executeCoreLogic(int current_switch2_maxPressCount, unsigned long current_s
   }
 
   // Check if 500ms active duration has elapsed to deactivate dosificadora
-  if (dosificadora_active && (millis() - dosificadora_startTime >= 500)) {
+  if (dosificadora_active && (millis() - dosificadora_startTime >= 3000)) {
     digitalWrite(dosificadoraPin, LOW);
     dosificadora_active = false;
     Serial.println(F("Dosificadora DEACTIVATED (500ms duration passed)")); // Debug
   }
   // --- End Dosificadora Logic ---
-
+  // --- Pin 12 Timed Deactivation Logic ---
+  if (pin12_is_active && (millis() - pin12_start_time >= 8000)) {
+    digitalWrite(pin12_output_pin, LOW);
+    pin12_is_active = false;
+    // Optional: Serial.println(F("Pin 12 DEACTIVATED after 8 seconds."));
+  }
   // --- Servo Timed Return to 0 Logic ---
   // If servo is at 90 degrees, check if its hold duration has elapsed.
   if (servo_isHoldingAt90) {
@@ -629,6 +647,8 @@ void setup() {
   pinMode(dosificadoraPin, OUTPUT);
   digitalWrite(dosificadoraPin, LOW);
 
+  pinMode(pin12_output_pin, OUTPUT);
+  digitalWrite(pin12_output_pin, LOW);
   // Initialize servo
   myServo.attach(servoPin); // Attach servo to its pin
   myServo.write(0);         // Set servo to initial position (0 degrees)
@@ -684,6 +704,8 @@ void loop() {
                   myServo.write(0);
                   digitalWrite(motorVibradorPin, LOW);
                   digitalWrite(dosificadoraPin, LOW);
+                  digitalWrite(pin12_output_pin, LOW);
+                  pin12_is_active = false;
                   dosificadora_pending = false;
                   dosificadora_active = false;
                   // Ensure pin 8 specific old indicator logic is not present if motorReductorPin handles it
@@ -716,6 +738,8 @@ void loop() {
                       switch2_pressCount = 0;
                       systemHalted_switch2Max = false;
                       canServoBeActivated = false;
+                      digitalWrite(pin12_output_pin, LOW);
+                      pin12_is_active = false;
                       nemaOverrideAttemptCounter = 0;
                       waiting_for_step_after_homing_press = false;
                       switch1_pressed_during_homing_time = 0;
@@ -744,6 +768,8 @@ void loop() {
                       switch2_pressCount = 0;
                       systemHalted_switch2Max = false;
                       canServoBeActivated = false;
+                      digitalWrite(pin12_output_pin, LOW);
+                      pin12_is_active = false;
                       nemaOverrideAttemptCounter = 0;
                       waiting_for_step_after_homing_press = false;
                       switch1_pressed_during_homing_time = 0;
@@ -772,6 +798,8 @@ void loop() {
                       switch2_pressCount = 0;
                       systemHalted_switch2Max = false;
                       canServoBeActivated = false;
+                      digitalWrite(pin12_output_pin, LOW);
+                      pin12_is_active = false;
                       nemaOverrideAttemptCounter = 0;
                       waiting_for_step_after_homing_press = false;
                       switch1_pressed_during_homing_time = 0;
@@ -800,6 +828,8 @@ void loop() {
                       switch2_pressCount = 0;
                       systemHalted_switch2Max = false;
                       canServoBeActivated = false;
+                      digitalWrite(pin12_output_pin, LOW);
+                      pin12_is_active = false;
                       nemaOverrideAttemptCounter = 0;
                       waiting_for_step_after_homing_press = false;
                       switch1_pressed_during_homing_time = 0;
