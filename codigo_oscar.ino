@@ -629,9 +629,9 @@ void moverPasoCorregido() {
  */
 void setup() {
   Serial.begin(57600); // Initialize Serial communication
-  while (!Serial) {
-    ; // Wait for Serial port to connect (needed for some Arduinos like Leonardo)
-  }
+  //while (!Serial) {
+//    ; // Wait for Serial port to connect (needed for some Arduinos like Leonardo)
+ // }
   Serial.println("Iniciando sistema en Arduino Nano...");
 
   // Configure pin modes
