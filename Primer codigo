@@ -1,0 +1,146 @@
+#include <ESP32Servo.h>
+#include "BluetoothSerial.h"
+
+// Pines de los servos
+#define servoBasePin        26  // Servo de la base (gira)
+#define servoChaisePin      25  // Servo del "codo" (sube/baja)
+#define servoArm01Pin       23  // Servo del brazo (pliega)
+#define servoBasePinzaPin   19  // Servo base de la pinza (eleva)
+#define servoPinzaPin       18  // Servo de la pinza (abre/cierra)
+
+#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+#error Bluetooth is not enabled! Please run 'make menuconfig' to enable it.
+#endif
+
+BluetoothSerial SerialBT;
+
+// Objetos Servo
+Servo servoBase;           // Gira la base del brazo
+Servo servoChaise;         // Mueve el codo del brazo
+Servo servoArm01;          // Pliega o extiende el brazo
+Servo servoBasePinza;      // Eleva o baja la pinza
+Servo servoPinza;          // Abre o cierra la pinza
+
+// Variables de control
+int grados;
+String completo;
+int ultimoBase = 90;
+int ultimoChaise = 100;
+int ultimoArm01 = 115;
+int ultimoBasePinza = 90;
+
+void setup() {
+  Serial.begin(115200);
+  SerialBT.begin("BRAZO");
+
+  ESP32PWM::allocateTimer(0);
+  ESP32PWM::allocateTimer(1);
+  ESP32PWM::allocateTimer(2);
+  ESP32PWM::allocateTimer(3);
+
+  servoBase.setPeriodHertz(50);
+  servoChaise.setPeriodHertz(50);
+  servoArm01.setPeriodHertz(50);
+  servoBasePinza.setPeriodHertz(50);
+  servoPinza.setPeriodHertz(50);
+
+  servoBase.attach(servoBasePin, 600, 2000);
+  servoChaise.attach(servoChaisePin, 600, 2400);
+  servoArm01.attach(servoArm01Pin, 600, 2400);
+  servoBasePinza.attach(servoBasePinzaPin, 600, 2000);
+  servoPinza.attach(servoPinzaPin, 600, 2400);
+}
+
+void loop() {
+  if (SerialBT.available()) {
+    completo = "";
+  }
+
+  while (SerialBT.available()) {
+    char dato = SerialBT.read();
+
+    // ---- SWITCH PRINCIPAL ----
+    switch (dato) {
+
+      // 🔹 Caso '.' → SERVO BASE (rotación principal)
+      case '.':
+        Serial.print("Base → " + completo + " grados\n");
+        grados = map(completo.toInt(), 0, 180, 0, 170);
+        servoBase.write(grados);
+        completo = "";
+        ultimoBase = grados;
+        break;
+
+      // 🔹 Caso '-' → SERVO CHAISE (codo)
+      case '-':
+        Serial.print("Chaise → " + completo + " grados\n");
+        grados = map(completo.toInt(), 0, 180, 40, 160);
+
+        if (grados > ultimoChaise) {
+          for (int i = ultimoChaise; i <= grados; i++) {
+            servoChaise.write(i);
+            delay(50);
+          }
+        } else {
+          for (int i = ultimoChaise; i >= grados; i--) {
+            servoChaise.write(i);
+            delay(50);
+          }
+        }
+
+        completo = "";
+        ultimoChaise = grados;
+        break;
+
+      // 🔹 Caso '3' → SERVO ARM01 (pliega el brazo)
+      case '3':
+        Serial.print("Arm01 → " + completo + " grados\n");
+        grados = map(completo.toInt(), 0, 180, 80, 160);
+
+        if (grados > ultimoArm01) {
+          for (int i = ultimoArm01; i <= grados; i++) {
+            servoArm01.write(i);
+            delay(50);
+          }
+        } else {
+          for (int i = ultimoArm01; i >= grados; i--) {
+            servoArm01.write(i);
+            delay(50);
+          }
+        }
+
+        completo = "";
+        ultimoArm01 = grados;
+        break;
+
+      // 🔹 Caso '4' → SERVO BASE DE LA PINZA (sube/baja)
+      case '4':
+        Serial.print("Base de la pinza → " + completo + " grados\n");
+        grados = map(completo.toInt(), 0, 180, 70, 150);
+        servoBasePinza.write(grados);
+        completo = "";
+        ultimoBasePinza = grados;
+        break;
+
+      default:
+        completo += dato;
+        break;
+    }
+
+    // ---- BLOQUE PINZA ----
+    // 🔹 'a' → Cierra la pinza
+    // 🔹 'b' → Abre la pinza
+    if (dato == 'a' || dato == 'b') {
+      if (dato == 'a') {
+        servoPinza.write(150);  // Cierra
+      } else {
+        servoPinza.write(80);   // Abre
+      }
+      Serial.println(String("Pinza: ") + (dato == 'a' ? "cerrar" : "abrir"));
+      completo = "";
+      break;
+    }
+  }
+
+  delay(50);
+}
