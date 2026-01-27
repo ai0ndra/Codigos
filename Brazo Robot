@@ -10,10 +10,9 @@ Servo servo06;
 
 SoftwareSerial Bluetooth(3, 4); // Arduino(RX, TX) - HC-05 Bluetooth (TX, RX)
 
-int servo1Pos, servo2Pos, servo3Pos, servo4Pos, servo5Pos, servo6Pos; // current position
 int servo1PPos, servo2PPos, servo3PPos, servo4PPos, servo5PPos, servo6PPos; // previous position
 int servo01SP[50], servo02SP[50], servo03SP[50], servo04SP[50], servo05SP[50], servo06SP[50]; // for storing positions/steps
-int speedDelay = 20;
+int speedDelay = 30; // Default delay for slow, smooth movement
 int index = 0;
 String dataIn = "";
 
@@ -24,58 +23,46 @@ void setup() {
   servo04.attach(8);
   servo05.attach(9);
   servo06.attach(10);
-  Serial.begin(9600); // Inicia la comunicación serial
-  Bluetooth.begin(38400); // Default baud rate of the Bluetooth module
+
+  Serial.begin(9600);
+  Bluetooth.begin(38400);
   Bluetooth.setTimeout(1);
   delay(20);
   
   // Robot arm initial position
-  servo1PPos = 130; servo1Pos = servo1PPos; servo01.write(servo1PPos);
-  servo2PPos = 180; servo2Pos = servo2PPos; servo02.write(servo2PPos);
-  servo3PPos = 0;   servo3Pos = servo3PPos; servo03.write(servo3PPos);
-  servo4PPos = 35;  servo4Pos = servo4PPos; servo04.write(servo4PPos);
-  servo5PPos = 135; servo5Pos = servo5PPos; servo05.write(servo5PPos);
-  servo6PPos = 45;  servo6Pos = servo6PPos; servo06.write(servo6PPos);
+  servo1PPos = 130; servo01.write(servo1PPos);
+  servo2PPos = 180; servo02.write(servo2PPos);
+  servo3PPos = 0;   servo03.write(servo3PPos);
+  servo4PPos = 35;  servo04.write(servo4PPos);
+  servo5PPos = 135; servo05.write(servo5PPos);
+  servo6PPos = 45;  servo06.write(servo6PPos);
 }
 
 void loop() {
-  // Check for incoming data
   if (Bluetooth.available() > 0) {
-    dataIn = Bluetooth.readString();  // Read the data as string
+    dataIn = Bluetooth.readString();
     dataIn.trim();
     Serial.print("Datos recibidos: ");
     Serial.println(dataIn);
 
-    // Move Servos
-    if (dataIn.startsWith("s1")) handleServoMovement(dataIn.substring(2), servo01, servo1PPos, servo1Pos);
-    if (dataIn.startsWith("s2")) handleServoMovement(dataIn.substring(2), servo02, servo2PPos, servo2Pos);
-    if (dataIn.startsWith("s3")) handleServoMovement(dataIn.substring(2), servo03, servo3PPos, servo3Pos);
-    if (dataIn.startsWith("s4")) handleServoMovement(dataIn.substring(2), servo04, servo4PPos, servo4Pos);
-    if (dataIn.startsWith("s5")) handleServoMovement(dataIn.substring(2), servo05, servo5PPos, servo5Pos);
-    if (dataIn.startsWith("s6")) handleServoMovement(dataIn.substring(2), servo06, servo6PPos, servo6Pos);
+    if (dataIn.startsWith("s1")) moveServoTo(dataIn.substring(2).toInt(), servo01, servo1PPos);
+    if (dataIn.startsWith("s2")) moveServoTo(dataIn.substring(2).toInt(), servo02, servo2PPos);
+    if (dataIn.startsWith("s3")) moveServoTo(dataIn.substring(2).toInt(), servo03, servo3PPos);
+    if (dataIn.startsWith("s4")) moveServoTo(dataIn.substring(2).toInt(), servo04, servo4PPos);
+    if (dataIn.startsWith("s5")) moveServoTo(dataIn.substring(2).toInt(), servo05, servo5PPos);
+    if (dataIn.startsWith("s6")) moveServoTo(dataIn.substring(2).toInt(), servo06, servo6PPos);
 
-    // Speed slider
-    if (dataIn.startsWith("ss")) {
-      speedDelay = dataIn.substring(2).toInt();
-    }
-
-    // Commands
+    if (dataIn.startsWith("ss")) speedDelay = dataIn.substring(2).toInt();
     if (dataIn.startsWith("SAVE")) savePositions();
     if (dataIn.startsWith("RUN")) runservo();
     if (dataIn == "RESET") resetPositions();
   }
 }
 
-// Function to handle individual servo movements
-void handleServoMovement(String data, Servo &servo, int &prevPos, int &currentPos) {
-  int newPos = data.toInt();
+// Function to move a servo to a new position slowly
+void moveServoTo(int newPos, Servo &servo, int &prevPos) {
+  if (newPos < 0 || newPos > 180) return;
 
-  if (newPos < 0 || newPos > 180) {
-    Serial.println("Invalid servo position: " + String(newPos));
-    return;
-  }
-
-  // Move servo smoothly
   if (prevPos > newPos) {
     for (int j = prevPos; j >= newPos; j--) {
       servo.write(j);
@@ -88,10 +75,8 @@ void handleServoMovement(String data, Servo &servo, int &prevPos, int &currentPo
     }
   }
   prevPos = newPos;
-  currentPos = newPos;
 }
 
-// Function to save current positions
 void savePositions() {
   if (index < 50) {
     servo01SP[index] = servo1PPos;
@@ -107,76 +92,62 @@ void savePositions() {
   }
 }
 
-// Function to reset positions
 void resetPositions() {
   index = 0;
   Serial.println("Positions reset");
 }
 
-// Automatic mode function - run the saved steps simultaneously
 void runservo() {
-  Serial.println("Running sequence...");
   if (index == 0) {
     Serial.println("No positions saved");
     return;
   }
 
+  Serial.println("Running sequential sequence...");
   bool paused = false;
+
   while (!paused) {
     for (int i = 0; i < index; i++) {
-      // Move all servos simultaneously to the target position
-      moveAllSimultaneously(servo01SP[i], servo02SP[i], servo03SP[i], servo04SP[i], servo05SP[i], servo06SP[i]);
+      // Move each servo one by one (sequentially)
+      if (checkInterruption(paused)) break;
+      moveServoTo(servo01SP[i], servo01, servo1PPos);
 
-      // Check for interruption during the sequence
-      if (Bluetooth.available() > 0) {
-        dataIn = Bluetooth.readString();
-        dataIn.trim();
-        if (dataIn == "PAUSE") {
-          paused = true;
-          break;
-        }
-        if (dataIn == "RESET") {
-          resetPositions();
-          return;
-        }
-        if (dataIn.startsWith("ss")) {
-          speedDelay = dataIn.substring(2).toInt();
-        }
-      }
+      if (checkInterruption(paused)) break;
+      moveServoTo(servo02SP[i], servo02, servo2PPos);
+
+      if (checkInterruption(paused)) break;
+      moveServoTo(servo03SP[i], servo03, servo3PPos);
+
+      if (checkInterruption(paused)) break;
+      moveServoTo(servo04SP[i], servo04, servo4PPos);
+
+      if (checkInterruption(paused)) break;
+      moveServoTo(servo05SP[i], servo05, servo5PPos);
+
+      if (checkInterruption(paused)) break;
+      moveServoTo(servo06SP[i], servo06, servo6PPos);
     }
   }
-  Serial.println("Sequence paused");
+  Serial.println("Sequence stopped/paused");
 }
 
-// Helper function to move all servos at once to a target pose
-void moveAllSimultaneously(int t1, int t2, int t3, int t4, int t5, int t6) {
-  int targets[] = {t1, t2, t3, t4, t5, t6};
-  int starts[] = {servo1PPos, servo2PPos, servo3PPos, servo4PPos, servo5PPos, servo6PPos};
-  Servo* servos[] = {&servo01, &servo02, &servo03, &servo04, &servo05, &servo06};
-
-  int maxDiff = 0;
-  for (int i = 0; i < 6; i++) {
-    maxDiff = _max(maxDiff, abs(targets[i] - starts[i]));
-  }
-
-  for (int i = 0; i <= maxDiff; i++) {
-    for (int s = 0; s < 6; s++) {
-      int pos = (maxDiff == 0) ? targets[s] : map(i, 0, maxDiff, starts[s], targets[s]);
-      servos[s]->write(pos);
+// Helper to check for Bluetooth commands during execution
+bool checkInterruption(bool &paused) {
+  if (Bluetooth.available() > 0) {
+    dataIn = Bluetooth.readString();
+    dataIn.trim();
+    if (dataIn == "PAUSE") {
+      paused = true;
+      return true;
     }
-    delay(speedDelay);
+    if (dataIn == "RESET") {
+      resetPositions();
+      paused = true;
+      return true;
+    }
+    if (dataIn.startsWith("ss")) {
+      speedDelay = dataIn.substring(2).toInt();
+    }
   }
-
-  // Update current and previous positions
-  servo1PPos = servo1Pos = t1;
-  servo2PPos = servo2Pos = t2;
-  servo3PPos = servo3Pos = t3;
-  servo4PPos = servo4Pos = t4;
-  servo5PPos = servo5Pos = t5;
-  servo6PPos = servo6Pos = t6;
-}
-
-// Standard Arduino max might be defined differently or as a macro
-int _max(int a, int b) {
-  return (a > b) ? a : b;
+  return false;
 }
