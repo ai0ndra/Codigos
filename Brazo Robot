@@ -12,7 +12,6 @@ SoftwareSerial Bluetooth(3, 4); // Arduino(RX, TX) - HC-05 Bluetooth (TX, RX)
 
 int servo1PPos, servo2PPos, servo3PPos, servo4PPos, servo5PPos, servo6PPos; // previous position
 int servo01SP[50], servo02SP[50], servo03SP[50], servo04SP[50], servo05SP[50], servo06SP[50]; // for storing positions/steps
-int speedDelay = 30; // Default delay for slow, smooth movement
 int index = 0;
 String dataIn = "";
 
@@ -45,34 +44,46 @@ void loop() {
     Serial.print("Datos recibidos: ");
     Serial.println(dataIn);
 
-    if (dataIn.startsWith("s1")) moveServoTo(dataIn.substring(2).toInt(), servo01, servo1PPos);
-    if (dataIn.startsWith("s2")) moveServoTo(dataIn.substring(2).toInt(), servo02, servo2PPos);
-    if (dataIn.startsWith("s3")) moveServoTo(dataIn.substring(2).toInt(), servo03, servo3PPos);
-    if (dataIn.startsWith("s4")) moveServoTo(dataIn.substring(2).toInt(), servo04, servo4PPos);
-    if (dataIn.startsWith("s5")) moveServoTo(dataIn.substring(2).toInt(), servo05, servo5PPos);
-    if (dataIn.startsWith("s6")) moveServoTo(dataIn.substring(2).toInt(), servo06, servo6PPos);
+    // Manual movement uses a fixed slow speed (e.g., 20ms per degree)
+    if (dataIn.startsWith("s1")) moveServoManual(dataIn.substring(2).toInt(), servo01, servo1PPos);
+    if (dataIn.startsWith("s2")) moveServoManual(dataIn.substring(2).toInt(), servo02, servo2PPos);
+    if (dataIn.startsWith("s3")) moveServoManual(dataIn.substring(2).toInt(), servo03, servo3PPos);
+    if (dataIn.startsWith("s4")) moveServoManual(dataIn.substring(2).toInt(), servo04, servo4PPos);
+    if (dataIn.startsWith("s5")) moveServoManual(dataIn.substring(2).toInt(), servo05, servo5PPos);
+    if (dataIn.startsWith("s6")) moveServoManual(dataIn.substring(2).toInt(), servo06, servo6PPos);
 
-    if (dataIn.startsWith("ss")) speedDelay = dataIn.substring(2).toInt();
     if (dataIn.startsWith("SAVE")) savePositions();
     if (dataIn.startsWith("RUN")) runservo();
     if (dataIn == "RESET") resetPositions();
   }
 }
 
-// Function to move a servo to a new position slowly
-void moveServoTo(int newPos, Servo &servo, int &prevPos) {
+// Fixed speed for manual control
+void moveServoManual(int newPos, Servo &servo, int &prevPos) {
   if (newPos < 0 || newPos > 180) return;
+  int distance = abs(newPos - prevPos);
+  if (distance == 0) return;
 
-  if (prevPos > newPos) {
-    for (int j = prevPos; j >= newPos; j--) {
-      servo.write(j);
-      delay(speedDelay);
-    }
-  } else {
-    for (int j = prevPos; j <= newPos; j++) {
-      servo.write(j);
-      delay(speedDelay);
-    }
+  for (int j = 1; j <= distance; j++) {
+    int curr = (prevPos < newPos) ? (prevPos + j) : (prevPos - j);
+    servo.write(curr);
+    delay(20);
+  }
+  prevPos = newPos;
+}
+
+// Timed movement for sequence playback (1.5 seconds)
+void moveServoTimed(int newPos, Servo &servo, int &prevPos) {
+  if (newPos < 0 || newPos > 180) return;
+  int distance = abs(newPos - prevPos);
+  if (distance == 0) return;
+
+  int stepDelay = 1500 / distance; // Total 1.5s for the movement
+
+  for (int j = 1; j <= distance; j++) {
+    int curr = (prevPos < newPos) ? (prevPos + j) : (prevPos - j);
+    servo.write(curr);
+    delay(stepDelay);
   }
   prevPos = newPos;
 }
@@ -103,35 +114,39 @@ void runservo() {
     return;
   }
 
-  Serial.println("Running sequential sequence...");
+  Serial.println("Running sequential timed sequence...");
   bool paused = false;
 
   while (!paused) {
     for (int i = 0; i < index; i++) {
-      // Move each servo one by one (sequentially)
       if (checkInterruption(paused)) break;
-      moveServoTo(servo01SP[i], servo01, servo1PPos);
+      moveServoTimed(servo01SP[i], servo01, servo1PPos);
+      if (interruptibleWait(2000, paused)) break; // 2s wait before next servo
 
       if (checkInterruption(paused)) break;
-      moveServoTo(servo02SP[i], servo02, servo2PPos);
+      moveServoTimed(servo02SP[i], servo02, servo2PPos);
+      if (interruptibleWait(2000, paused)) break;
 
       if (checkInterruption(paused)) break;
-      moveServoTo(servo03SP[i], servo03, servo3PPos);
+      moveServoTimed(servo03SP[i], servo03, servo3PPos);
+      if (interruptibleWait(2000, paused)) break;
 
       if (checkInterruption(paused)) break;
-      moveServoTo(servo04SP[i], servo04, servo4PPos);
+      moveServoTimed(servo04SP[i], servo04, servo4PPos);
+      if (interruptibleWait(2000, paused)) break;
 
       if (checkInterruption(paused)) break;
-      moveServoTo(servo05SP[i], servo05, servo5PPos);
+      moveServoTimed(servo05SP[i], servo05, servo5PPos);
+      if (interruptibleWait(2000, paused)) break;
 
       if (checkInterruption(paused)) break;
-      moveServoTo(servo06SP[i], servo06, servo6PPos);
+      moveServoTimed(servo06SP[i], servo06, servo6PPos);
+      if (interruptibleWait(2000, paused)) break;
     }
   }
   Serial.println("Sequence stopped/paused");
 }
 
-// Helper to check for Bluetooth commands during execution
 bool checkInterruption(bool &paused) {
   if (Bluetooth.available() > 0) {
     dataIn = Bluetooth.readString();
@@ -145,9 +160,15 @@ bool checkInterruption(bool &paused) {
       paused = true;
       return true;
     }
-    if (dataIn.startsWith("ss")) {
-      speedDelay = dataIn.substring(2).toInt();
-    }
+  }
+  return false;
+}
+
+bool interruptibleWait(unsigned long duration, bool &paused) {
+  unsigned long start = millis();
+  while (millis() - start < duration) {
+    if (checkInterruption(paused)) return true;
+    delay(10);
   }
   return false;
 }
