@@ -1,5 +1,12 @@
-#include <SoftwareSerial.h>
-#include <Servo.h>
+#include "BluetoothSerial.h"
+#include <ESP32Servo.h>
+
+// Check if Bluetooth is enabled
+#if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
+#error Bluetooth is not enabled! Please run `make menuconfig` to and enable it
+#endif
+
+BluetoothSerial SerialBT;
 
 Servo servo01;
 Servo servo02;
@@ -8,7 +15,13 @@ Servo servo04;
 Servo servo05;
 Servo servo06;
 
-SoftwareSerial Bluetooth(3, 4); // Arduino(RX, TX) - HC-05 Bluetooth (TX, RX)
+// Recommended safe GPIOs for ESP32 (avoiding pins 6-11)
+const int servo1Pin = 13;
+const int servo2Pin = 14;
+const int servo3Pin = 25;
+const int servo4Pin = 26;
+const int servo5Pin = 27;
+const int servo6Pin = 32;
 
 int servo1PPos, servo2PPos, servo3PPos, servo4PPos, servo5PPos, servo6PPos; // previous position
 int servo01SP[50], servo02SP[50], servo03SP[50], servo04SP[50], servo05SP[50], servo06SP[50]; // for storing positions/steps
@@ -16,17 +29,19 @@ int index = 0;
 String dataIn = "";
 
 void setup() {
-  servo01.attach(5);
-  servo02.attach(6);
-  servo03.attach(7);
-  servo04.attach(8);
-  servo05.attach(9);
-  servo06.attach(10);
+  Serial.begin(115200);
 
-  Serial.begin(9600);
-  Bluetooth.begin(38400);
-  Bluetooth.setTimeout(1);
-  delay(20);
+  // Initialize Bluetooth with a name
+  SerialBT.begin("BrazoRobot_ESP32");
+  Serial.println("Bluetooth started. Connect to 'BrazoRobot_ESP32'");
+
+  // Attach servos to pins
+  servo01.attach(servo1Pin);
+  servo02.attach(servo2Pin);
+  servo03.attach(servo3Pin);
+  servo04.attach(servo4Pin);
+  servo05.attach(servo5Pin);
+  servo06.attach(servo6Pin);
   
   // Robot arm initial position
   servo1PPos = 130; servo01.write(servo1PPos);
@@ -38,13 +53,13 @@ void setup() {
 }
 
 void loop() {
-  if (Bluetooth.available() > 0) {
-    dataIn = Bluetooth.readString();
+  if (SerialBT.available() > 0) {
+    dataIn = SerialBT.readString();
     dataIn.trim();
     Serial.print("Datos recibidos: ");
     Serial.println(dataIn);
 
-    // Manual movement uses a fixed slow speed (e.g., 20ms per degree)
+    // Manual movement
     if (dataIn.startsWith("s1")) moveServoManual(dataIn.substring(2).toInt(), servo01, servo1PPos);
     if (dataIn.startsWith("s2")) moveServoManual(dataIn.substring(2).toInt(), servo02, servo2PPos);
     if (dataIn.startsWith("s3")) moveServoManual(dataIn.substring(2).toInt(), servo03, servo3PPos);
@@ -148,8 +163,8 @@ void runservo() {
 }
 
 bool checkInterruption(bool &paused) {
-  if (Bluetooth.available() > 0) {
-    dataIn = Bluetooth.readString();
+  if (SerialBT.available() > 0) {
+    dataIn = SerialBT.readString();
     dataIn.trim();
     if (dataIn == "PAUSE") {
       paused = true;
