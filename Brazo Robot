@@ -72,13 +72,13 @@ void moveServoManual(int newPos, Servo &servo, int &prevPos) {
   prevPos = newPos;
 }
 
-// Timed movement for sequence playback (1.5 seconds)
+// Timed movement for sequence playback (3 seconds)
 void moveServoTimed(int newPos, Servo &servo, int &prevPos) {
   if (newPos < 0 || newPos > 180) return;
   int distance = abs(newPos - prevPos);
   if (distance == 0) return;
 
-  int stepDelay = 1500 / distance; // Total 1.5s for the movement
+  int stepDelay = 3000 / distance; // Total 3s for the movement
 
   for (int j = 1; j <= distance; j++) {
     int curr = (prevPos < newPos) ? (prevPos + j) : (prevPos - j);
