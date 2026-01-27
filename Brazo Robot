@@ -1,0 +1,203 @@
+#include <SoftwareSerial.h>
+#include <Servo.h>
+
+Servo servo01;
+Servo servo02;
+Servo servo03;
+Servo servo04;
+Servo servo05;
+Servo servo06;
+
+SoftwareSerial Bluetooth(3, 4); // Arduino(RX, TX) - HC-05 Bluetooth (TX, RX)
+
+int servo1Pos, servo2Pos, servo3Pos, servo4Pos, servo5Pos, servo6Pos; // current position
+int servo1PPos, servo2PPos, servo3PPos, servo4PPos, servo5PPos, servo6PPos; // previous position
+int servo01SP[50], servo02SP[50], servo03SP[50], servo04SP[50], servo05SP[50], servo06SP[50]; // for storing positions/steps
+int speedDelay = 20;
+int index = 0;
+String dataIn = "";
+
+void setup() {
+  servo01.attach(5);
+  servo02.attach(6);
+  servo03.attach(7);
+  servo04.attach(8);
+  servo05.attach(9);
+  servo06.attach(10);
+  Serial.begin(9600); // Inicia la comunicación serial
+  Bluetooth.begin(38400); // Default baud rate of the Bluetooth module
+  Bluetooth.setTimeout(1);
+  delay(20);
+  
+  // Robot arm initial position
+  servo1PPos = 130; 
+  servo1Pos = servo1PPos; 
+  servo01.write(servo1PPos);
+  
+  servo2PPos = 180;
+  servo2Pos = servo2PPos;
+  servo02.write(servo2PPos);
+  
+  servo3PPos = 0;
+  servo3Pos = servo3PPos;
+  servo03.write(servo3PPos);
+  
+  servo4PPos = 35;
+  servo4Pos = servo4PPos;
+  servo04.write(servo4PPos);
+  
+  servo5PPos = 135;
+  servo5Pos = servo5PPos;
+  servo05.write(servo5PPos);
+  
+  servo6PPos = 45;
+  servo6Pos = servo6PPos;
+  servo06.write(servo6PPos);
+}
+
+void loop() {
+  // Check for incoming data
+  if (Bluetooth.available() > 0) {
+    dataIn = Bluetooth.readString();  // Read the data as string
+  Serial.print("Datos recibidos: ");
+  Serial.println(dataIn);
+    // Move Servo 1
+    if (dataIn.startsWith("s1")) {
+      handleServoMovement(dataIn.substring(2), servo01, servo1PPos, servo1Pos);
+    }
+    if (servo1Pos < 0 || servo1Pos > 180) {
+    Serial.println("Error: Valor fuera de rango");
+    }   
+    // Move Servo 2
+    if (dataIn.startsWith("s2")) {
+      handleServoMovement(dataIn.substring(2), servo02, servo2PPos, servo2Pos);
+    }
+
+    // Move Servo 3
+    if (dataIn.startsWith("s3")) {
+      handleServoMovement(dataIn.substring(2), servo03, servo3PPos, servo3Pos);
+    }
+
+    // Move Servo 4
+    if (dataIn.startsWith("s4")) {
+      handleServoMovement(dataIn.substring(2), servo04, servo4PPos, servo4Pos);
+    }
+
+    // Move Servo 5
+    if (dataIn.startsWith("s5")) {
+      handleServoMovement(dataIn.substring(2), servo05, servo5PPos, servo5Pos);
+    }
+
+    // Move Servo 6
+    if (dataIn.startsWith("s6")) {
+      handleServoMovement(dataIn.substring(2), servo06, servo6PPos, servo6Pos);
+    }
+
+    // If button "SAVE" is pressed
+    if (dataIn.startsWith("SAVE")) {
+      savePositions();
+    }
+
+    // If button "RUN" is pressed
+    if (dataIn.startsWith("RUN")) {
+      runservo();
+    }
+
+    // If button "RESET" is pressed
+    if (dataIn == "RESET") {
+      resetPositions();
+    }
+  }
+}
+
+// Function to handle servo movements
+void handleServoMovement(String data, Servo &servo, int &prevPos, int &currentPos) {
+  int newPos = data.toInt(); // Convert the string to integer
+
+  // Validate the new position (assuming angles are limited from 0 to 180)
+  if (newPos < 0 || newPos > 180) {
+    Serial.println("Invalid servo position: " + String(newPos));
+    return; // Exit if the position is invalid
+  }
+
+  // Move servo to the new position smoothly
+  if (prevPos > newPos) {
+    for (int j = prevPos; j >= newPos; j--) {
+      servo.write(j);
+      delay(speedDelay);
+    }
+  } else {
+    for (int j = prevPos; j <= newPos; j++) {
+      servo.write(j);
+      delay(speedDelay);
+    }
+  }
+  prevPos = newPos; // Update previous position
+}
+
+// Function to save current positions
+void savePositions() {
+  if (index < 50) { // Prevent overflow
+    servo01SP[index] = servo1PPos;
+    servo02SP[index] = servo2PPos;
+    servo03SP[index] = servo3PPos;
+    servo04SP[index] = servo4PPos;
+    servo05SP[index] = servo5PPos;
+    servo06SP[index] = servo6PPos;
+    index++;
+  } else {
+    Serial.println("Memory full, cannot save more positions.");
+  }
+}
+
+// Function to reset positions
+void resetPositions() {
+
+  memset(servo01SP, 0, sizeof(servo01SP));
+  memset(servo02SP, 0, sizeof(servo02SP));
+  memset(servo03SP, 0, sizeof(servo03SP));
+  memset(servo04SP, 0, sizeof(servo04SP));
+  memset(servo05SP, 0, sizeof(servo05SP));
+  memset(servo06SP, 0, sizeof(servo06SP));
+  index = 0; // Reset index
+}
+
+// Automatic mode custom function - run the saved steps
+void runservo() {
+  while (dataIn != "PAUSE") {
+  for (int i = 0; i < index - 1; i++) {  // Run through all steps (index)
+    if (Bluetooth.available() > 0) {      // Check for incoming data
+      dataIn = Bluetooth.readString();
+      if (dataIn == "RESET") {
+              return; // Exit if RESET command received
+            }
+      // If speed slider is changed
+      if (dataIn.startsWith("ss")) {
+        String dataInS = dataIn.substring(2);
+        speedDelay = dataInS.toInt(); // Change servo speed (delay time)
+      }
+    }
+
+    // Move each servo based on saved positions
+    for (int s = 0; s < 6; s++) {
+      Servo &servo = (s == 0) ? servo01 : (s == 1) ? servo02 : (s == 2) ? servo03 :
+                     (s == 3) ? servo04 : (s == 4) ? servo05 : servo06;
+
+      int *servoSP = (s == 0) ? servo01SP : (s == 1) ? servo02SP : (s == 2) ? servo03SP :
+                     (s == 3) ? servo04SP : (s == 4) ? servo05SP : servo06SP;
+
+      if (servoSP[i] > servoSP[i + 1]) {
+        for (int j = servoSP[i]; j >= servoSP[i + 1]; j--) {
+          servo.write(j);
+          delay(speedDelay);
+        }
+      } else {
+        for (int j = servoSP[i]; j <= servoSP[i + 1]; j++) {
+          servo.write(j);
+          delay(speedDelay);
+        }
+      }
+    }
+  }
+ }
+}
