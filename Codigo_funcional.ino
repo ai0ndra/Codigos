@@ -19,19 +19,19 @@ void setup() {
   SERVO5.attach(19);
 
   // ----- POSICIÓN INICIAL -----
-  SERVO1.startEaseTo(90, tiempo2);
+  SERVO1.startEaseToD(90, tiempo2);
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
-  SERVO2.startEaseTo(90, tiempo2);
+  SERVO2.startEaseToD(90, tiempo2);
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
-  SERVO3.startEaseTo(90, tiempo2);
+  SERVO3.startEaseToD(90, tiempo2);
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
-  SERVO4.startEaseTo(90, tiempo3);
+  SERVO4.startEaseToD(90, tiempo3);
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
-  SERVO5.startEaseTo(90, tiempo3);
+  SERVO5.startEaseToD(90, tiempo3);
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
   delay(espera);   // espera 5 segundos en posición inicial
@@ -40,44 +40,44 @@ void setup() {
 void loop() {
 
   // -------- SECUENCIA 1 --------
-  SERVO1.startEaseTo(40, tiempo2);        // cintura
+  SERVO1.startEaseToD(40, tiempo2);        // cintura
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO2.startEaseTo(30, tiempo2);        // brazo 1
+  SERVO2.startEaseToD(30, tiempo2);        // brazo 1
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO3.startEaseTo(95, tiempo2);        // brazo 2
+  SERVO3.startEaseToD(95, tiempo2);        // brazo 2
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO4.startEaseTo(54, tiempo3);        // base pinza
+  SERVO4.startEaseToD(54, tiempo3);        // base pinza
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO5.startEaseTo(5, tiempo3);         // pinza
+  SERVO5.startEaseToD(5, tiempo3);         // pinza
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   // -------- VOLVER A INICIAL --------
-  SERVO1.startEaseTo(90, tiempo2);
+  SERVO1.startEaseToD(90, tiempo2);
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO2.startEaseTo(90, tiempo2);
+  SERVO2.startEaseToD(90, tiempo2);
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO3.startEaseTo(90, tiempo2);
+  SERVO3.startEaseToD(90, tiempo2);
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO4.startEaseTo(90, tiempo3);
+  SERVO4.startEaseToD(90, tiempo3);
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO5.startEaseTo(90, tiempo3);
+  SERVO5.startEaseToD(90, tiempo3);
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 }
