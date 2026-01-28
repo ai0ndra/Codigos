@@ -6,9 +6,9 @@ ServoEasing SERVO3;
 ServoEasing SERVO4;
 ServoEasing SERVO5;
 
-int tiempo2 = 3000;  // 3 segundos por movimiento
-int tiempo3 = 4000;  // 4 segundos por movimiento
-int espera = 5000;   // 5 segundos en cada posición
+int tiempo2 = 1500;  // 1.5 segundos por movimiento
+int tiempo3 = 1500;  // 1.5 segundos por movimiento
+int espera = 1500;   // 1.5 segundos de espera
 
 void setup() {
   Serial.begin(115200);
@@ -30,18 +30,22 @@ void setup() {
   Serial.println("Servo 1 a 90...");
   SERVO1.startEaseToD(90, tiempo2);
   updateAndWaitForAllServosToStop();
+  delay(espera);
 
   Serial.println("Servo 2 a 90...");
   SERVO2.startEaseToD(90, tiempo2);
   updateAndWaitForAllServosToStop();
+  delay(espera);
 
   Serial.println("Servo 3 a 90...");
   SERVO3.startEaseToD(90, tiempo2);
   updateAndWaitForAllServosToStop();
+  delay(espera);
 
   Serial.println("Servo 4 a 90...");
   SERVO4.startEaseToD(90, tiempo3);
   updateAndWaitForAllServosToStop();
+  delay(espera);
 
   Serial.println("Servo 5 a 90...");
   SERVO5.startEaseToD(90, tiempo3);
