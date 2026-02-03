@@ -13,16 +13,15 @@ int espera = 1500;   // 1.5 segundos de espera
 void setup() {
   Serial.begin(115200);
   delay(1000);
-  Serial.println("--- Sistema de Brazo Robot Iniciado ---");
+  Serial.println("--- Sistema de Brazo Robot Iniciado (Pines Corregidos) ---");
 
-  // Pines ESP32
-  // Usamos el pin 27 para el Servo 1 como prueba de seguridad
-  // Inicializamos SERVO1 en 0 para que el movimiento a 90 sea visible
-  SERVO1.attach(27, 0);
-  SERVO2.attach(23, 90);
-  SERVO3.attach(26, 90);
-  SERVO4.attach(18, 90);
-  SERVO5.attach(19, 90);
+  // Pines ESP32 - Evitamos Pines 1 y 3 (TX/RX) para no interferir con el Serial
+  // Inicializamos en 0 para que el movimiento a 90 sea visible
+  SERVO1.attach(23, 0);
+  SERVO2.attach(32, 0);
+  SERVO3.attach(27, 0);
+  SERVO4.attach(26, 0);
+  SERVO5.attach(22, 0);
 
   Serial.println("Definiendo posición inicial...");
 
