@@ -1,0 +1,81 @@
+#include <ServoEasing.hpp> 
+
+ServoEasing SERVO1;
+ServoEasing SERVO2;
+ServoEasing SERVO3;
+ServoEasing SERVO4;
+ServoEasing SERVO5;
+
+int tiempo2 = 3000;
+int tiempo3 = 4000;
+int espera  = 5000;
+
+void setup() {
+  // Pines ESP32
+  SERVO1.attach(23);   // RX0 (GPIO 3)
+  SERVO2.attach(3);  // Es 32
+  SERVO3.attach(32); // Es 3
+  SERVO4.attach(1);
+  SERVO5.attach(22);
+
+  // ----- POSICIÓN INICIAL -----
+  SERVO1.startEaseTo(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO2.startEaseTo(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO3.startEaseTo(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO4.startEaseTo(90, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO5.startEaseTo(90, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  delay(espera);
+}
+
+void loop() {
+  SERVO1.startEaseTo(40, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+
+  SERVO2.startEaseTo(30, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+
+  SERVO3.startEaseTo(95, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+
+  SERVO4.startEaseTo(54, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+
+  SERVO5.startEaseTo(5, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+
+  // Volver a inicial
+  SERVO1.startEaseTo(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+
+  SERVO2.startEaseTo(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+
+  SERVO3.startEaseTo(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+
+  SERVO4.startEaseTo(90, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+
+  SERVO5.startEaseTo(90, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+  delay(espera);
+}
