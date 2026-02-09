@@ -30,19 +30,19 @@ void setup() {
 
   // ----- POSICIÓN INICIAL -----
   SERVO1.startEaseToD(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
   SERVO2.startEaseToD(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
   SERVO3.startEaseToD(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
   SERVO4.startEaseToD(90, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
   SERVO5.startEaseToD(90, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
   delay(espera);
 }
@@ -50,43 +50,43 @@ void setup() {
 void loop() {
 
   SERVO1.startEaseToD(40, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   SERVO2.startEaseToD(40, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   SERVO3.startEaseToD(95, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   SERVO4.startEaseToD(54, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   SERVO5.startEaseToD(5, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   // ----- VOLVER A INICIAL -----
   SERVO1.startEaseToD(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   SERVO2.startEaseToD(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   SERVO3.startEaseToD(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   SERVO4.startEaseToD(90, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   SERVO5.startEaseToD(90, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 }
