@@ -23,73 +23,73 @@ void setup() {
   SERVO5.attach(22);
 
   // ----- OPCIÓN 2: ARRANQUE ULTRA SUAVE -----
-  SERVO1.setEasingType(EASE_IN_OUT_SINE);
-  SERVO2.setEasingType(EASE_IN_OUT_SINE);
-  SERVO3.setEasingType(EASE_IN_OUT_SINE);
+  SERVO1.setEasingType(EASE_SINE_IN_OUT);
+  SERVO2.setEasingType(EASE_SINE_IN_OUT);
+  SERVO3.setEasingType(EASE_SINE_IN_OUT);
 
   // Los otros dos quedan normales
-  SERVO4.setEasingType(EASE_IN_OUT_CUBIC);
-  SERVO5.setEasingType(EASE_IN_OUT_CUBIC);
+  SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
   // ----- POSICIÓN INICIAL -----
-  SERVO1.startEaseTo(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO1.startEaseToD(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
-  SERVO2.startEaseTo(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO2.startEaseToD(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
-  SERVO3.startEaseTo(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO3.startEaseToD(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
-  SERVO4.startEaseTo(90, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO4.startEaseToD(90, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
-  SERVO5.startEaseTo(90, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO5.startEaseToD(90, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
   delay(espera);
 }
 
 void loop() {
 
-  SERVO1.startEaseTo(40, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO1.startEaseToD(40, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO2.startEaseTo(40, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO2.startEaseToD(40, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO3.startEaseTo(95, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO3.startEaseToD(95, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO4.startEaseTo(54, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO4.startEaseToD(54, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO5.startEaseTo(5, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO5.startEaseToD(5, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   // ----- VOLVER A INICIAL -----
-  SERVO1.startEaseTo(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO1.startEaseToD(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO2.startEaseTo(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO2.startEaseToD(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO3.startEaseTo(90, tiempo2);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO3.startEaseToD(90, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO4.startEaseTo(90, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO4.startEaseToD(90, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO5.startEaseTo(90, tiempo3);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO5.startEaseToD(90, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 }
