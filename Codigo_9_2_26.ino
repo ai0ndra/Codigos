@@ -6,42 +6,39 @@ ServoEasing SERVO3;
 ServoEasing SERVO4;
 ServoEasing SERVO5;
 
-int tiempo2 = 10000;
-int tiempo3 = 10000;
+// Tiempos de movimiento (en milisegundos)
+// 3000 = 3 segundos. 10000 = 10 segundos.
+int tiempo2 = 5000;
+int tiempo3 = 5000;
 int espera  = 1000;
 
 void setup() {
 
   // Pines ESP32
-  SERVO1.attach(23);
-  SERVO2.attach(33);
-  SERVO3.attach(32);
-  SERVO4.attach(25);
-  SERVO5.attach(22);
+  // Al hacer attach, el servo saltará a la posición inicial (90 por defecto).
+  // Es recomendable que el brazo esté físicamente cerca de esta posición al encenderlo.
+  SERVO1.attach(23, 90);
+  SERVO2.attach(33, 90);
+  SERVO3.attach(32, 90);
+  SERVO4.attach(25, 90);
+  SERVO5.attach(22, 90);
 
-  // ----- OPCIÓN 2: ARRANQUE ULTRA SUAVE -----
+  // Configuración de suavizado (Easing)
   SERVO1.setEasingType(EASE_SINE_IN_OUT);
   SERVO2.setEasingType(EASE_SINE_IN_OUT);
   SERVO3.setEasingType(EASE_SINE_IN_OUT);
-
-  // Los otros dos quedan normales
   SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
-  // ----- POSICIÓN INICIAL -----
-  SERVO1.startEaseToD(90, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
+  // ----- MOVIMIENTO INICIAL SIMULTÁNEO -----
+  // Movemos todos a la posición de inicio (90) de forma sincronizada y lenta.
+  // Nota: Si ya saltaron a 90 en el attach(), este movimiento será instantáneo.
+  SERVO1.setEaseToD(90, tiempo2);
+  SERVO2.setEaseToD(90, tiempo2);
+  SERVO3.setEaseToD(90, tiempo2);
+  SERVO4.setEaseToD(90, tiempo3);
+  SERVO5.setEaseToD(90, tiempo3);
 
-  SERVO2.startEaseToD(90, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO3.startEaseToD(90, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO4.startEaseToD(90, tiempo3);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO5.startEaseToD(90, tiempo3);
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
   delay(espera);
@@ -49,44 +46,24 @@ void setup() {
 
 void loop() {
 
-  SERVO1.startEaseToD(40, tiempo2);
+  // -------- SECUENCIA 1: MOVER A POSICIÓN DE TRABAJO --------
+  // Movemos todos los servos al mismo tiempo para que sea más fluido
+  SERVO1.setEaseToD(40, tiempo2);
+  SERVO2.setEaseToD(40, tiempo2);
+  SERVO3.setEaseToD(95, tiempo2);
+  SERVO4.setEaseToD(54, tiempo3);
+  SERVO5.setEaseToD(5, tiempo3);
+
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO2.startEaseToD(40, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
+  // -------- SECUENCIA 2: VOLVER A INICIAL --------
+  SERVO1.setEaseToD(90, tiempo2);
+  SERVO2.setEaseToD(90, tiempo2);
+  SERVO3.setEaseToD(90, tiempo2);
+  SERVO4.setEaseToD(90, tiempo3);
+  SERVO5.setEaseToD(90, tiempo3);
 
-  SERVO3.startEaseToD(95, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
-
-  SERVO4.startEaseToD(54, tiempo3);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
-
-  SERVO5.startEaseToD(5, tiempo3);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
-
-  // ----- VOLVER A INICIAL -----
-  SERVO1.startEaseToD(90, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
-
-  SERVO2.startEaseToD(90, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
-
-  SERVO3.startEaseToD(90, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
-
-  SERVO4.startEaseToD(90, tiempo3);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
-
-  SERVO5.startEaseToD(90, tiempo3);
   synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 }
