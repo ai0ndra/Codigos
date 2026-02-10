@@ -6,9 +6,12 @@ ServoEasing SERVO3;
 ServoEasing SERVO4;
 ServoEasing SERVO5;
 
-// Tiempo total para cada movimiento (2000 ms = 2 segundos)
-int tiempoMov = 2000;
-int espera    = 1500; // Pausa entre posiciones
+// VELOCIDAD (Grados por segundo)
+// 20 es muy lento y suave.
+// 60 es una velocidad media.
+// ¡NO uses números grandes como 2000 aquí!
+int velocidadLenta = 25;
+int espera         = 1500; // Pausa entre posiciones
 
 void setup() {
   // Pines ESP32 e inicialización en 90 grados.
@@ -20,6 +23,7 @@ void setup() {
   SERVO5.attach(22, 90);
 
   // Configuración de suavizado (Easing)
+  // CUBIC ofrece el arranque y parada más suaves.
   SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
@@ -27,23 +31,13 @@ void setup() {
   SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
   // ----- INICIO: ASEGURAR POSICIÓN 90 -----
-  // Usamos synchronizeAllServosStartAndWaitForAllServosToStop() después de cada movimiento
-  // para asegurar que se muevan de uno en uno (secuencialmente).
-
-  SERVO1.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO2.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO3.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO4.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO5.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
+  // easeTo(angulo, velocidad) es una función bloqueante:
+  // Espera a que el servo termine antes de pasar al siguiente.
+  SERVO1.easeTo(90, velocidadLenta);
+  SERVO2.easeTo(90, velocidadLenta);
+  SERVO3.easeTo(90, velocidadLenta);
+  SERVO4.easeTo(90, velocidadLenta);
+  SERVO5.easeTo(90, velocidadLenta);
 
   delay(espera);
 }
@@ -51,38 +45,20 @@ void setup() {
 void loop() {
 
   // -------- SECUENCIA 1: IR A HOME (90) UNO POR UNO --------
-  SERVO1.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO2.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO3.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO4.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO5.startEaseToD(90, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO1.easeTo(90, velocidadLenta);
+  SERVO2.easeTo(90, velocidadLenta);
+  SERVO3.easeTo(90, velocidadLenta);
+  SERVO4.easeTo(90, velocidadLenta);
+  SERVO5.easeTo(90, velocidadLenta);
 
   delay(espera);
 
   // -------- SECUENCIA 2: IR A TRABAJO UNO POR UNO --------
-  SERVO1.startEaseToD(40, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO2.startEaseToD(40, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO3.startEaseToD(95, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO4.startEaseToD(54, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO5.startEaseToD(5, tiempoMov);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO1.easeTo(40, velocidadLenta);
+  SERVO2.easeTo(40, velocidadLenta);
+  SERVO3.easeTo(95, velocidadLenta);
+  SERVO4.easeTo(54, velocidadLenta);
+  SERVO5.easeTo(5, velocidadLenta);
 
   delay(espera);
 }
