@@ -6,30 +6,13 @@ ServoEasing SERVO3;
 ServoEasing SERVO4;
 ServoEasing SERVO5;
 
-// Variables para rastrear la posición actual de cada servo
-int pos1 = 90, pos2 = 90, pos3 = 90, pos4 = 90, pos5 = 90;
-
-// Tiempo total para cada movimiento de articulación (2 segundos)
+// Tiempo total para cada movimiento (2000 ms = 2 segundos)
 int tiempoMov = 2000;
-int espera    = 1500;
-
-// Función personalizada basada en la lógica de "8 pasos" proporcionada por el usuario
-void moverSuave(ServoEasing &servo, int inicio, int fin, int tiempoTotal) {
-  int pasos = 8;
-  float delta = (float)(fin - inicio) / pasos;
-  int tiempoPaso = tiempoTotal / pasos;
-  float pos = (float)inicio;
-
-  for (int i = 0; i < pasos; i++) {
-    pos += delta;
-    // Usamos startEaseToD para asegurar que tiempoPaso se trate como milisegundos
-    servo.startEaseToD(pos, tiempoPaso);
-    synchronizeAllServosStartAndWaitForAllServosToStop();
-  }
-}
+int espera    = 1500; // Pausa entre posiciones
 
 void setup() {
-  // Pines ESP32 e inicialización
+  // Pines ESP32 e inicialización en 90 grados.
+  // attach(pin, inicial) ayuda a evitar saltos bruscos.
   SERVO1.attach(23, 90);
   SERVO2.attach(33, 90);
   SERVO3.attach(32, 90);
@@ -44,11 +27,23 @@ void setup() {
   SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
   // ----- INICIO: ASEGURAR POSICIÓN 90 -----
-  moverSuave(SERVO1, pos1, 90, tiempoMov); pos1 = 90;
-  moverSuave(SERVO2, pos2, 90, tiempoMov); pos2 = 90;
-  moverSuave(SERVO3, pos3, 90, tiempoMov); pos3 = 90;
-  moverSuave(SERVO4, pos4, 90, tiempoMov); pos4 = 90;
-  moverSuave(SERVO5, pos5, 90, tiempoMov); pos5 = 90;
+  // Usamos synchronizeAllServosStartAndWaitForAllServosToStop() después de cada movimiento
+  // para asegurar que se muevan de uno en uno (secuencialmente).
+
+  SERVO1.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO2.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO3.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO4.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO5.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
   delay(espera);
 }
@@ -56,20 +51,38 @@ void setup() {
 void loop() {
 
   // -------- SECUENCIA 1: IR A HOME (90) UNO POR UNO --------
-  moverSuave(SERVO1, pos1, 90, tiempoMov); pos1 = 90;
-  moverSuave(SERVO2, pos2, 90, tiempoMov); pos2 = 90;
-  moverSuave(SERVO3, pos3, 90, tiempoMov); pos3 = 90;
-  moverSuave(SERVO4, pos4, 90, tiempoMov); pos4 = 90;
-  moverSuave(SERVO5, pos5, 90, tiempoMov); pos5 = 90;
+  SERVO1.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO2.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO3.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO4.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO5.startEaseToD(90, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
   delay(espera);
 
   // -------- SECUENCIA 2: IR A TRABAJO UNO POR UNO --------
-  moverSuave(SERVO1, pos1, 40, tiempoMov); pos1 = 40;
-  moverSuave(SERVO2, pos2, 40, tiempoMov); pos2 = 40;
-  moverSuave(SERVO3, pos3, 95, tiempoMov); pos3 = 95;
-  moverSuave(SERVO4, pos4, 54, tiempoMov); pos4 = 54;
-  moverSuave(SERVO5, pos5, 5, tiempoMov);  pos5 = 5;
+  SERVO1.startEaseToD(40, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO2.startEaseToD(40, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO3.startEaseToD(95, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO4.startEaseToD(54, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO5.startEaseToD(5, tiempoMov);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
 
   delay(espera);
 }
