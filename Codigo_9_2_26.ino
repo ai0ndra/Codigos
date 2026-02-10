@@ -6,13 +6,15 @@ ServoEasing SERVO3;
 ServoEasing SERVO4;
 ServoEasing SERVO5;
 
-// Tiempo para cada movimiento (2000 ms = 2 segundos)
-int tiempoEse = 2000;
-int espera    = 1500; // Pausa entre posiciones
+// VELOCIDAD calculada (83 grados por segundo)
+// Basada en un retraso de 12ms por grado (1000/12 = 83).
+// Esto mantiene una velocidad constante sin importar la distancia,
+// pero conserva el arranque y parada suaves (Easing).
+int velocidadIdeal = 83;
+int espera         = 1500; // Pausa entre posiciones
 
 void setup() {
   // Pines ESP32 e inicialización en 90 grados.
-  // Al usar attach(pin, inicial), el servo se posiciona antes de activarse.
   SERVO1.attach(23, 90);
   SERVO2.attach(33, 90);
   SERVO3.attach(32, 90);
@@ -20,7 +22,6 @@ void setup() {
   SERVO5.attach(22, 90);
 
   // Configuración de suavizado (Easing)
-  // EASE_CUBIC_IN_OUT proporciona el arranque y parada más suaves.
   SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
@@ -28,13 +29,12 @@ void setup() {
   SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
   // ----- INICIO: ASEGURAR POSICIÓN 90 -----
-  // easeToD es una función de bloqueo (bloquea hasta que el servo termina).
-  // Esto asegura que se muevan uno por uno sin necesidad de funciones externas.
-  SERVO1.easeToD(90, tiempoEse);
-  SERVO2.easeToD(90, tiempoEse);
-  SERVO3.easeToD(90, tiempoEse);
-  SERVO4.easeToD(90, tiempoEse);
-  SERVO5.easeToD(90, tiempoEse);
+  // easeTo usa la velocidad (grados por segundo) en lugar de tiempo fijo.
+  SERVO1.easeTo(90, velocidadIdeal);
+  SERVO2.easeTo(90, velocidadIdeal);
+  SERVO3.easeTo(90, velocidadIdeal);
+  SERVO4.easeTo(90, velocidadIdeal);
+  SERVO5.easeTo(90, velocidadIdeal);
 
   delay(espera);
 }
@@ -42,20 +42,20 @@ void setup() {
 void loop() {
 
   // -------- SECUENCIA 1: IR A HOME (90) UNO POR UNO --------
-  SERVO1.easeToD(90, tiempoEse);
-  SERVO2.easeToD(90, tiempoEse);
-  SERVO3.easeToD(90, tiempoEse);
-  SERVO4.easeToD(90, tiempoEse);
-  SERVO5.easeToD(90, tiempoEse);
+  SERVO1.easeTo(90, velocidadIdeal);
+  SERVO2.easeTo(90, velocidadIdeal);
+  SERVO3.easeTo(90, velocidadIdeal);
+  SERVO4.easeTo(90, velocidadIdeal);
+  SERVO5.easeTo(90, velocidadIdeal);
 
   delay(espera);
 
   // -------- SECUENCIA 2: IR A TRABAJO UNO POR UNO --------
-  SERVO1.easeToD(40, tiempoEse);
-  SERVO2.easeToD(40, tiempoEse);
-  SERVO3.easeToD(95, tiempoEse);
-  SERVO4.easeToD(54, tiempoEse);
-  SERVO5.easeToD(5, tiempoEse);
+  SERVO1.easeTo(40, velocidadIdeal);
+  SERVO2.easeTo(40, velocidadIdeal);
+  SERVO3.easeTo(95, velocidadIdeal);
+  SERVO4.easeTo(54, velocidadIdeal);
+  SERVO5.easeTo(5, velocidadIdeal);
 
   delay(espera);
 }
