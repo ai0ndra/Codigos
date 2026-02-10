@@ -6,17 +6,13 @@ ServoEasing SERVO3;
 ServoEasing SERVO4;
 ServoEasing SERVO5;
 
-// VELOCIDAD de movimiento (en grados por segundo)
-// Un valor de 20 o 30 es lento y permite ver el efecto de suavizado (Easing).
-// Si quieres que sea más lento, baja este número (ej. 10).
-// Si quieres que sea más rápido, súbelo (ej. 60).
-int velocidad = 30;
-int espera    = 1500; // Pausa entre secuencias
+// Tiempo para cada movimiento (2000 ms = 2 segundos)
+int tiempoEse = 2000;
+int espera    = 1500; // Pausa entre posiciones
 
 void setup() {
-
-  // Pines ESP32
-  // Al inicializar en 90, intentamos que el brazo no salte bruscamente al encender.
+  // Pines ESP32 e inicialización en 90 grados.
+  // Al usar attach(pin, inicial), el servo se posiciona antes de activarse.
   SERVO1.attach(23, 90);
   SERVO2.attach(33, 90);
   SERVO3.attach(32, 90);
@@ -24,20 +20,21 @@ void setup() {
   SERVO5.attach(22, 90);
 
   // Configuración de suavizado (Easing)
-  // EASE_CUBIC_IN_OUT proporciona un arranque y parada muy suaves.
+  // EASE_CUBIC_IN_OUT proporciona el arranque y parada más suaves.
   SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
-  // ----- MOVIMIENTO INICIAL: ASEGURAR POSICIÓN HOME (90) -----
-  // easeTo es una función que espera a que el servo termine antes de seguir.
-  SERVO1.easeTo(90, velocidad);
-  SERVO2.easeTo(90, velocidad);
-  SERVO3.easeTo(90, velocidad);
-  SERVO4.easeTo(90, velocidad);
-  SERVO5.easeTo(90, velocidad);
+  // ----- INICIO: ASEGURAR POSICIÓN 90 -----
+  // easeToD es una función de bloqueo (bloquea hasta que el servo termina).
+  // Esto asegura que se muevan uno por uno sin necesidad de funciones externas.
+  SERVO1.easeToD(90, tiempoEse);
+  SERVO2.easeToD(90, tiempoEse);
+  SERVO3.easeToD(90, tiempoEse);
+  SERVO4.easeToD(90, tiempoEse);
+  SERVO5.easeToD(90, tiempoEse);
 
   delay(espera);
 }
@@ -45,21 +42,20 @@ void setup() {
 void loop() {
 
   // -------- SECUENCIA 1: IR A HOME (90) UNO POR UNO --------
-  // Esto asegura que el robot siempre empiece desde 90 en cada ciclo.
-  SERVO1.easeTo(90, velocidad);
-  SERVO2.easeTo(90, velocidad);
-  SERVO3.easeTo(90, velocidad);
-  SERVO4.easeTo(90, velocidad);
-  SERVO5.easeTo(90, velocidad);
+  SERVO1.easeToD(90, tiempoEse);
+  SERVO2.easeToD(90, tiempoEse);
+  SERVO3.easeToD(90, tiempoEse);
+  SERVO4.easeToD(90, tiempoEse);
+  SERVO5.easeToD(90, tiempoEse);
 
   delay(espera);
 
-  // -------- SECUENCIA 2: MOVER UNO POR UNO A POSICIÓN DE TRABAJO --------
-  SERVO1.easeTo(40, velocidad);
-  SERVO2.easeTo(40, velocidad);
-  SERVO3.easeTo(95, velocidad);
-  SERVO4.easeTo(54, velocidad);
-  SERVO5.easeTo(5, velocidad);
+  // -------- SECUENCIA 2: IR A TRABAJO UNO POR UNO --------
+  SERVO1.easeToD(40, tiempoEse);
+  SERVO2.easeToD(40, tiempoEse);
+  SERVO3.easeToD(95, tiempoEse);
+  SERVO4.easeToD(54, tiempoEse);
+  SERVO5.easeToD(5, tiempoEse);
 
   delay(espera);
 }
