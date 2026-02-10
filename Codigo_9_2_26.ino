@@ -7,16 +7,15 @@ ServoEasing SERVO4;
 ServoEasing SERVO5;
 
 // Tiempos de movimiento (en milisegundos)
-// 10000 = 10 segundos. 15000 = 15 segundos.
-// He aumentado estos valores para que el movimiento sea MUCHO más lento.
-int tiempo2 = 10000;
-int tiempo3 = 10000;
-int espera  = 2000;
+// 2000 = 2 segundos por cada movimiento de servo.
+int tiempo2 = 2000;
+int tiempo3 = 2000;
+int espera  = 1500; // Pausa entre secuencias
 
 void setup() {
 
   // Pines ESP32
-  // Al hacer attach con 90, el servo intentará mantenerse en esa posición desde el inicio.
+  // Inicializamos en 90 grados para minimizar el salto inicial.
   SERVO1.attach(23, 90);
   SERVO2.attach(33, 90);
   SERVO3.attach(32, 90);
@@ -30,8 +29,7 @@ void setup() {
   SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
-  // ----- MOVIMIENTO INICIAL: UNO POR UNO -----
-  // Aseguramos que todos empiecen en 90 grados de forma lenta y secuencial.
+  // ----- MOVIMIENTO INICIAL: ASEGURAR POSICIÓN HOME (90) -----
   SERVO1.startEaseToD(90, tiempo2);
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
@@ -52,25 +50,8 @@ void setup() {
 
 void loop() {
 
-  // -------- SECUENCIA 1: MOVER UNO POR UNO A POSICIÓN DE TRABAJO --------
-  SERVO1.startEaseToD(40, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO2.startEaseToD(40, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO3.startEaseToD(95, tiempo2);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO4.startEaseToD(54, tiempo3);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  SERVO5.startEaseToD(5, tiempo3);
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-
-  delay(espera);
-
-  // -------- SECUENCIA 2: VOLVER UNO POR UNO A INICIAL (90) --------
+  // -------- SECUENCIA 1: IR A HOME (90) UNO POR UNO --------
+  // Aunque ya esté en 90 al empezar, esto asegura que el robot siempre empiece desde aquí cada ciclo.
   SERVO1.startEaseToD(90, tiempo2);
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
@@ -84,6 +65,24 @@ void loop() {
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
   SERVO5.startEaseToD(90, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  delay(espera);
+
+  // -------- SECUENCIA 2: MOVER UNO POR UNO A POSICIÓN DE TRABAJO --------
+  SERVO1.startEaseToD(40, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO2.startEaseToD(40, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO3.startEaseToD(95, tiempo2);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO4.startEaseToD(54, tiempo3);
+  synchronizeAllServosStartAndWaitForAllServosToStop();
+
+  SERVO5.startEaseToD(5, tiempo3);
   synchronizeAllServosStartAndWaitForAllServosToStop();
 
   delay(espera);
