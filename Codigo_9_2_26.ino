@@ -8,14 +8,19 @@ ServoEasing SERVO5;
 
 // VELOCIDAD (Grados por segundo)
 // 15 es una velocidad extremadamente suave y lenta.
-// Ideal para ver el efecto de arranque y parada suaves (Easing).
+// Ideal para que se note el arranque y parada suaves (Easing).
+// ¡NO uses números como 2000 aquí, o irá a máxima velocidad!
 int velocidadSuave = 15;
-int espera         = 2000; // Pausa entre posiciones (2 segundos)
+int espera         = 1500; // Pausa entre posiciones
 
 void setup() {
+  // IMPORTANTE: Para la versión más reciente de la librería en ESP32,
+  // esta línea es necesaria para gestionar los 5 servos.
+  ServoEasing::setServoEasingCount(5);
+
   // Pines ESP32 e inicialización en 90 grados.
-  // IMPORTANTE: Para evitar el salto inicial, asegúrate de dejar el brazo
-  // en esta posición (90°) antes de apagarlo la última vez.
+  // El "salto" que ves al encender ocurre justo en estas líneas.
+  // Para evitarlo, deja el brazo en posición de 90° antes de apagarlo.
   SERVO1.attach(23, 90);
   SERVO2.attach(33, 90);
   SERVO3.attach(32, 90);
@@ -23,15 +28,12 @@ void setup() {
   SERVO5.attach(22, 90);
 
   // Configuración de suavizado (Easing)
-  // EASE_CUBIC_IN_OUT proporciona la aceleración y deceleración más elegantes.
-  SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
+  // CUBIC ofrece el arranque y parada más elegantes y fluidos.
+  setEasingTypeForAllServos(EASE_CUBIC_IN_OUT);
 
   // ----- CALIBRACIÓN INICIAL -----
-  // Como ya hicimos attach en 90, esto solo asegura que el sistema esté sincronizado.
+  // easeTo(angulo, velocidad) es bloqueante:
+  // Espera a que cada servo termine antes de pasar al siguiente.
   SERVO1.easeTo(90, velocidadSuave);
   SERVO2.easeTo(90, velocidadSuave);
   SERVO3.easeTo(90, velocidadSuave);
@@ -52,7 +54,7 @@ void loop() {
 
   delay(espera);
 
-  // -------- SECUENCIA 2: MOVER UNO POR UNO A POSICIÓN DE TRABAJO --------
+  // -------- SECUENCIA 2: IR A TRABAJO UNO POR UNO --------
   SERVO1.easeTo(40, velocidadSuave);
   SERVO2.easeTo(40, velocidadSuave);
   SERVO3.easeTo(95, velocidadSuave);
