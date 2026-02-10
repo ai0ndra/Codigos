@@ -1,68 +1,64 @@
 /*
- * Este código demuestra cómo obtener la posición exacta (en grados) de un servo
- * utilizando tanto la librería estándar Servo.h como ServoEasing.hpp.
+ * Este código permite controlar un servo manualmente desde el Monitor Serial
+ * y muestra en tiempo real en qué grado se encuentra.
  */
 
-#include <ServoEasing.hpp> // Recomendada para movimientos suaves
-#include <ESP32Servo.h>    // Necesaria si usas ESP32 con la librería Servo estándar
+#include <ServoEasing.hpp>
 
-// --- Ejemplo con ServoEasing ---
-ServoEasing servoEasing;
-const int pinEasing = 25;
-
-// --- Ejemplo con Servo estándar ---
-Servo servoEstandar;
-const int pinEstandar = 26;
+ServoEasing servo;
+const int pinServo = 25; // Cambia este pin según tu conexión (p.ej. 25 en ESP32)
 
 void setup() {
     Serial.begin(115200);
 
-    // Configuración ServoEasing
-    servoEasing.attach(pinEasing, 90); // Inicia en 90 grados
+    // Configuración inicial: empezamos en 90 grados
+    servo.attach(pinServo, 90);
 
-    // Configuración Servo estándar
-    servoEstandar.attach(pinEstandar);
-    servoEstandar.write(90); // Inicia en 90 grados
-
-    Serial.println("Sistema iniciado. Moviendo servos...");
+    Serial.println("--- Control Manual de Servo ---");
+    Serial.println("Escribe un número entre 0 y 180 en el Monitor Serial y pulsa Enter.");
+    Serial.println("El sistema te dirá en qué grado se encuentra el servo en cada momento.");
+    Serial.print("Posición actual: ");
+    Serial.println(servo.getCurrentAngle());
 }
 
 void loop() {
-    // 1. Mover con ServoEasing y leer posición en tiempo real
-    Serial.println("\nMoviendo ServoEasing a 180 grados...");
-    servoEasing.startEaseTo(180, 50); // Mover a 180 con velocidad 50
+    // Verificar si hay datos en el puerto serial
+    if (Serial.available() > 0) {
+        // Leer el número ingresado
+        int objetivo = Serial.parseInt();
 
-    while (servoEasing.isMoving()) {
-        // getCurrentAngle() devuelve la posición exacta durante el movimiento
-        float anguloActual = servoEasing.getCurrentAngle();
-        Serial.print("ServoEasing pos: ");
-        Serial.print(anguloActual);
-        Serial.println("°");
-        delay(100);
+        // Limpiar el buffer del Serial
+        while(Serial.available() > 0) Serial.read();
+
+        // Validar el rango (0 a 180 grados)
+        if (objetivo >= 0 && objetivo <= 180) {
+            Serial.print("\nMoviendo a: ");
+            Serial.print(objetivo);
+            Serial.println(" grados...");
+
+            // Mover el servo suavemente
+            // Usamos una velocidad de 45 grados por segundo (ideal según requerimientos previos)
+            servo.startEaseTo(objetivo, 45);
+
+            // Mientras se mueve, reportamos la posición exacta
+            while (servo.isMoving()) {
+                float anguloActual = servo.getCurrentAngle();
+                Serial.print("Grado actual: ");
+                Serial.print(anguloActual);
+                Serial.println("°");
+
+                delay(100); // Pequeña pausa para no saturar el Monitor Serial
+            }
+
+            Serial.println("¡Movimiento completado!");
+            Serial.print("Posición final confirmada: ");
+            Serial.print(servo.getCurrentAngle());
+            Serial.println("°");
+            Serial.println("\nEsperando nuevo comando...");
+        } else {
+            if (objetivo != 0 || (objetivo == 0 && Serial.read() != -1)) { // Evitar el 0 que devuelve parseInt si no hay número
+                 Serial.println("Error: Por favor ingresa un ángulo válido entre 0 y 180.");
+            }
+        }
     }
-    Serial.println("ServoEasing llegó a su destino.");
-
-    delay(2000);
-
-    // 2. Mover con Servo estándar y leer posición
-    Serial.println("\nMoviendo Servo estándar a 0 grados...");
-    servoEstandar.write(0);
-
-    // La librería estándar no tiene isMoving(), pero podemos leer el último valor escrito
-    int ultimoGradoEscrito = servoEstandar.read();
-    Serial.print("El último grado enviado al servo estándar fue: ");
-    Serial.println(ultimoGradoEscrito);
-
-    delay(2000);
-
-    // 3. Regresar ServoEasing a 90 grados
-    Serial.println("\nRegresando ServoEasing a 90 grados...");
-    servoEasing.startEaseTo(90, 50);
-    while (servoEasing.isMoving()) {
-        Serial.print("ServoEasing pos: ");
-        Serial.println(servoEasing.getCurrentAngle());
-        delay(100);
-    }
-
-    delay(5000); // Esperar antes de repetir el ciclo
 }
