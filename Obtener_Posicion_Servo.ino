@@ -1,63 +1,62 @@
 /*
- * Este código permite controlar un servo manualmente desde el Monitor Serial
- * y muestra en tiempo real en qué grado se encuentra.
+ * Este código permite controlar un servo manualmente desde el Monitor Serial.
+ * Responde a la duda: ¿Por qué siempre empieza en 90 grados?
  */
 
 #include <ServoEasing.hpp>
 
 ServoEasing servo;
-const int pinServo = 25; // Cambia este pin según tu conexión (p.ej. 25 en ESP32)
+const int pinServo = 25;
+
+// --- POSICIÓN INICIAL (HOME) ---
+// Los servos estándar no saben su posición física al encenderse.
+// Por eso, definimos un "Home" en el código para que el servo tenga un punto de partida conocido.
+const int ANGULO_INICIAL = 90;
 
 void setup() {
     Serial.begin(115200);
 
-    // Configuración inicial: empezamos en 90 grados
-    servo.attach(pinServo, 90);
+    // Al hacer attach(pin, grado), el servo se moverá inmediatamente a ese grado.
+    // Esto evita movimientos erráticos, pero causará un "salto" si el servo
+    // estaba en una posición muy diferente cuando se apagó.
+    servo.attach(pinServo, ANGULO_INICIAL);
 
     Serial.println("--- Control Manual de Servo ---");
-    Serial.println("Escribe un número entre 0 y 180 en el Monitor Serial y pulsa Enter.");
-    Serial.println("El sistema te dirá en qué grado se encuentra el servo en cada momento.");
-    Serial.print("Posición actual: ");
-    Serial.println(servo.getCurrentAngle());
+    Serial.print("Iniciado en posición Home: ");
+    Serial.print(ANGULO_INICIAL);
+    Serial.println(" grados.");
+    Serial.println("Escribe un número (0-180) para moverlo:");
 }
 
 void loop() {
-    // Verificar si hay datos en el puerto serial
     if (Serial.available() > 0) {
-        // Leer el número ingresado
         int objetivo = Serial.parseInt();
 
-        // Limpiar el buffer del Serial
+        // Limpiar buffer
         while(Serial.available() > 0) Serial.read();
 
-        // Validar el rango (0 a 180 grados)
         if (objetivo >= 0 && objetivo <= 180) {
-            Serial.print("\nMoviendo a: ");
+            Serial.print("\nMoviendo de ");
+            Serial.print(servo.getCurrentAngle());
+            Serial.print("° a ");
             Serial.print(objetivo);
-            Serial.println(" grados...");
+            Serial.println("°...");
 
-            // Mover el servo suavemente
-            // Usamos una velocidad de 45 grados por segundo (ideal según requerimientos previos)
             servo.startEaseTo(objetivo, 45);
 
-            // Mientras se mueve, reportamos la posición exacta
             while (servo.isMoving()) {
-                float anguloActual = servo.getCurrentAngle();
                 Serial.print("Grado actual: ");
-                Serial.print(anguloActual);
+                Serial.print(servo.getCurrentAngle());
                 Serial.println("°");
-
-                delay(100); // Pequeña pausa para no saturar el Monitor Serial
+                delay(100);
             }
 
-            Serial.println("¡Movimiento completado!");
-            Serial.print("Posición final confirmada: ");
-            Serial.print(servo.getCurrentAngle());
-            Serial.println("°");
-            Serial.println("\nEsperando nuevo comando...");
+            Serial.println("¡Llegamos!");
+            Serial.println("\nEsperando nuevo ángulo...");
         } else {
-            if (objetivo != 0 || (objetivo == 0 && Serial.read() != -1)) { // Evitar el 0 que devuelve parseInt si no hay número
-                 Serial.println("Error: Por favor ingresa un ángulo válido entre 0 y 180.");
+            // Manejar caso de timeout o entrada inválida
+            if (objetivo != 0 || (objetivo == 0 && Serial.read() != -1)) {
+                 Serial.println("Error: Ingresa un ángulo entre 0 y 180.");
             }
         }
     }
