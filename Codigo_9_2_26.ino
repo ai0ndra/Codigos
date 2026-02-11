@@ -6,40 +6,43 @@ ServoEasing SERVO3;
 ServoEasing SERVO4;
 ServoEasing SERVO5;
 
-// DURACIÓN del movimiento (en milisegundos)
-// 3000 = 3 segundos por cada movimiento de servo.
-// Usamos easeToD para asegurar que la librería use el tiempo y no la velocidad.
-int duracionSosegada = 3000;
-int espera           = 2000; // Pausa entre posiciones
+// Variables para recordar la posición y asegurar movimientos fluidos
+float posActual1 = 90, posActual2 = 90, posActual3 = 90, posActual4 = 90, posActual5 = 90;
+
+// Tiempo total para cada movimiento (2000ms = 2 segundos)
+int tiempoTotal = 2000;
+int espera      = 1500;
+
+// Función personalizada de 8 pasos que te dio el resultado que buscabas
+void moverSuave(ServoEasing &servo, float inicio, float fin, int tiempo) {
+  int pasos = 8;
+  float delta = (fin - inicio) / pasos;
+  int tiempoPaso = tiempo / pasos;
+  float pos = inicio;
+
+  for (int i = 0; i < pasos; i++) {
+    pos += delta;
+    // Usamos startEaseToD para garantizar que el tiempo sea en milisegundos
+    servo.startEaseToD(pos, tiempoPaso);
+    synchronizeAllServosStartAndWaitForAllServosToStop();
+  }
+}
 
 void setup() {
-  // IMPORTANTE: En la versión más reciente para ESP32,
-  // esta línea es necesaria para gestionar los servos correctamente.
-  ServoEasing::setServoEasingCount(5);
-
-  // Pines ESP32 e inicialización.
-  // El primer "salto" ocurrirá al hacer attach. Es inevitable por hardware.
+  // Pines ESP32 e inicialización
+  // Al hacer attach(pin, 90), el servo saltará a 90°. Es un salto de hardware inevitable.
   SERVO1.attach(23, 90);
   SERVO2.attach(33, 90);
   SERVO3.attach(32, 90);
   SERVO4.attach(25, 90);
   SERVO5.attach(22, 90);
 
-  // Configuración de suavizado (Easing)
-  // EASE_CUBIC_IN_OUT proporciona el arranque y parada más fluidos.
+  // Configuración de suavizado
   SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
-
-  // ----- CALIBRACIÓN INICIAL -----
-  // easeToD(angulo, milisegundos) es bloqueante: se mueve uno por uno lentamente.
-  SERVO1.easeToD(90, duracionSosegada);
-  SERVO2.easeToD(90, duracionSosegada);
-  SERVO3.easeToD(90, duracionSosegada);
-  SERVO4.easeToD(90, duracionSosegada);
-  SERVO5.easeToD(90, duracionSosegada);
 
   delay(espera);
 }
@@ -47,20 +50,20 @@ void setup() {
 void loop() {
 
   // -------- SECUENCIA 1: IR A HOME (90) UNO POR UNO --------
-  SERVO1.easeToD(90, duracionSosegada);
-  SERVO2.easeToD(90, duracionSosegada);
-  SERVO3.easeToD(90, duracionSosegada);
-  SERVO4.easeToD(90, duracionSosegada);
-  SERVO5.easeToD(90, duracionSosegada);
+  moverSuave(SERVO1, posActual1, 90, tiempoTotal); posActual1 = 90;
+  moverSuave(SERVO2, posActual2, 90, tiempoTotal); posActual2 = 90;
+  moverSuave(SERVO3, posActual3, 90, tiempoTotal); posActual3 = 90;
+  moverSuave(SERVO4, posActual4, 90, tiempoTotal); posActual4 = 90;
+  moverSuave(SERVO5, posActual5, 90, tiempoTotal); posActual5 = 90;
 
   delay(espera);
 
-  // -------- SECUENCIA 2: IR A TRABAJO UNO POR UNO --------
-  SERVO1.easeToD(40, duracionSosegada);
-  SERVO2.easeToD(40, duracionSosegada);
-  SERVO3.easeToD(95, duracionSosegada);
-  SERVO4.easeToD(54, duracionSosegada);
-  SERVO5.easeToD(5, duracionSosegada);
+  // -------- SECUENCIA 2: MOVER UNO POR UNO A POSICIÓN DE TRABAJO --------
+  moverSuave(SERVO1, posActual1, 40, tiempoTotal); posActual1 = 40;
+  moverSuave(SERVO2, posActual2, 40, tiempoTotal); posActual2 = 40;
+  moverSuave(SERVO3, posActual3, 95, tiempoTotal); posActual3 = 95;
+  moverSuave(SERVO4, posActual4, 54, tiempoTotal); posActual4 = 54;
+  moverSuave(SERVO5, posActual5, 5, tiempoTotal);  posActual5 = 5;
 
   delay(espera);
 }
