@@ -8,15 +8,20 @@ ServoEasing SERVO5;
 
 // VELOCIDAD para el movimiento normal (Grados por segundo)
 int velocidad = 30; 
-int espera    = 1500; 
+int espera    = 1000;
 
 // Función para alcanzar la posición inicial usando "pasos" manuales (1 grado a la vez)
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
-  int actual = servo.read(); // Lee la posición actual (normalmente 90 por defecto al hacer attach)
+  int actual = servo.read(); // Lee la posición actual
   
-  
-  
+  // Mover suavemente hacia el destino grado a grado
+  while (actual != destino) {
+    if (actual < destino) actual++;
+    else actual--;
+    servo.write(actual);
+    delay(20); // Ajusta la velocidad del movimiento inicial
+  }
 }
 
 void setup() {
