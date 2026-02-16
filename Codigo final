@@ -1,0 +1,57 @@
+#include <ServoEasing.hpp>
+
+ServoEasing SERVO1;
+ServoEasing SERVO2;
+ServoEasing SERVO3;
+ServoEasing SERVO4;
+ServoEasing SERVO5;
+
+// VELOCIDAD para el movimiento normal (Grados por segundo)
+int velocidad = 30; 
+int espera    = 1500; 
+
+// Función para alcanzar la posición inicial usando "pasos" manuales (1 grado a la vez)
+void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
+  servo.attach(pin);
+  int actual = servo.read(); // Lee la posición actual (normalmente 90 por defecto al hacer attach)
+  
+  
+  
+}
+
+void setup() {
+  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON PASOS MANUALES -----
+  // Esto se hace uno por uno de forma secuencial.
+  alcanzarHomeConPasos(SERVO1, 23, 90);
+  alcanzarHomeConPasos(SERVO2, 33, 90);
+  alcanzarHomeConPasos(SERVO3, 32, 90);
+  alcanzarHomeConPasos(SERVO4, 25, 90);
+  alcanzarHomeConPasos(SERVO5, 22, 90);
+
+  // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
+  SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
+
+  delay(espera);
+}
+
+void loop() {
+  // -------- SECUENCIA 1: IR A HOME (90) CON VELOCIDAD CONTROLADA --------
+  SERVO1.easeTo(90, velocidad);
+  SERVO2.easeTo(90, velocidad);
+  SERVO3.easeTo(90, velocidad);
+  SERVO4.easeTo(90, velocidad);
+  SERVO5.easeTo(90, velocidad);
+  delay(espera);
+
+  // -------- SECUENCIA 2: IR A TRABAJO CON VELOCIDAD CONTROLADA --------
+  SERVO1.easeTo(40, velocidad);
+  SERVO2.easeTo(40, velocidad);
+  SERVO3.easeTo(95, velocidad);
+  SERVO4.easeTo(54, velocidad);
+  SERVO5.easeTo(41, velocidad);
+  delay(espera);
+}
