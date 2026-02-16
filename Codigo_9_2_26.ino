@@ -6,45 +6,23 @@ ServoEasing SERVO3;
 ServoEasing SERVO4;
 ServoEasing SERVO5;
 
-// VELOCIDAD para el movimiento normal (Grados por segundo)
-int velocidad = 30;
-int espera    = 1500;
-
-// Función para alcanzar la posición inicial usando "pasos" manuales (1 grado a la vez)
-void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
-  servo.attach(pin);
-  int actual = servo.read(); // Lee la posición actual (normalmente 90 por defecto al hacer attach)
-
-  // Si el brazo se movió manualmente, el ESP32 no lo sabe,
-  // por lo que el primer comando siempre será un pequeño salto.
-  // Pero los siguientes grados se moverán paso a paso.
-  if (actual < destino) {
-    for (int i = actual; i <= destino; i++) {
-      servo.write(i);
-      delay(20); // Retraso entre cada paso de 1 grado
-    }
-  } else if (actual > destino) {
-    for (int i = actual; i >= destino; i--) {
-      servo.write(i);
-      delay(20);
-    }
-  } else {
-    // Si ya está en el destino, forzamos un pequeño barrido para asegurar
-    // que el motor esté energizado y en posición.
-    servo.write(destino);
-  }
-}
+// VELOCIDAD (Grados por segundo)
+// 15 es una velocidad extremadamente lenta y suave.
+int velocidad = 15;
+int espera = 1500;
 
 void setup() {
-  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON PASOS MANUALES -----
-  // Esto se hace uno por uno de forma secuencial.
-  alcanzarHomeConPasos(SERVO1, 23, 90);
-  alcanzarHomeConPasos(SERVO2, 33, 90);
-  alcanzarHomeConPasos(SERVO3, 32, 90);
-  alcanzarHomeConPasos(SERVO4, 25, 90);
-  alcanzarHomeConPasos(SERVO5, 22, 90);
+  // ----- PASO 1: LLEGAR A 90 GRADOS UNO POR UNO -----
+  // Al hacer attach, el servo saltará a 90°. Es un comportamiento físico inevitable.
+  // Pero al hacerlo de uno en uno con un delay, logramos que se posicionen secuencialmente.
 
-  // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
+  SERVO1.attach(23, 90); delay(800);
+  SERVO2.attach(33, 90); delay(800);
+  SERVO3.attach(32, 90); delay(800);
+  SERVO4.attach(25, 90); delay(800);
+  SERVO5.attach(22, 90); delay(800);
+
+  // Configuración de suavizado
   SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
@@ -54,20 +32,29 @@ void setup() {
   delay(espera);
 }
 
+// Función auxiliar para mover un servo y esperar a que termine (Garantiza secuencia)
+void moverYEsperar(ServoEasing &servo, int angulo, int vel) {
+  servo.easeTo(angulo, vel);
+  // Este bucle fuerza al programa a esperar hasta que el servo llegue a su destino
+  while (servo.isMovingAndEasing()) {
+    delay(1);
+  }
+}
+
 void loop() {
-  // -------- SECUENCIA 1: IR A HOME (90) CON VELOCIDAD CONTROLADA --------
-  SERVO1.easeTo(90, velocidad);
-  SERVO2.easeTo(90, velocidad);
-  SERVO3.easeTo(90, velocidad);
-  SERVO4.easeTo(90, velocidad);
-  SERVO5.easeTo(90, velocidad);
+  // -------- SECUENCIA 1: IR A HOME (90) UNO POR UNO --------
+  moverYEsperar(SERVO1, 90, velocidad);
+  moverYEsperar(SERVO2, 90, velocidad);
+  moverYEsperar(SERVO3, 90, velocidad);
+  moverYEsperar(SERVO4, 90, velocidad);
+  moverYEsperar(SERVO5, 90, velocidad);
   delay(espera);
 
-  // -------- SECUENCIA 2: IR A TRABAJO CON VELOCIDAD CONTROLADA --------
-  SERVO1.easeTo(40, velocidad);
-  SERVO2.easeTo(40, velocidad);
-  SERVO3.easeTo(95, velocidad);
-  SERVO4.easeTo(54, velocidad);
-  SERVO5.easeTo(5, velocidad);
+  // -------- SECUENCIA 2: IR A TRABAJO UNO POR UNO --------
+  moverYEsperar(SERVO1, 40, velocidad);
+  moverYEsperar(SERVO2, 40, velocidad);
+  moverYEsperar(SERVO3, 95, velocidad);
+  moverYEsperar(SERVO4, 54, velocidad);
+  moverYEsperar(SERVO5, 5, velocidad);
   delay(espera);
 }
