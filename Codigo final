@@ -20,7 +20,7 @@ void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
     if (actual < destino) actual++;
     else actual--;
     servo.write(actual);
-    delay(20); // Ajusta la velocidad del movimiento inicial
+    delay(100); // Aumentado para un movimiento muy lento (100ms por cada grado)
   }
 }
 
