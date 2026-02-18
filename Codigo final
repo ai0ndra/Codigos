@@ -8,24 +8,31 @@ ServoEasing SERVO5;
 
 // VELOCIDAD para el movimiento normal (Grados por segundo)
 int velocidad = 30; 
+int velocidadInicial = 5; // Velocidad MUY lenta para el inicio
 int espera    = 1000;
 
-// Función para alcanzar la posición inicial usando "pasos" manuales (1 grado a la vez)
+// Función para alcanzar la posición inicial de forma controlada
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
-  int actual = servo.read(); // Lee la posición actual
   
-  // Mover suavemente hacia el destino grado a grado
-  while (actual != destino) {
-    if (actual < destino) actual++;
-    else actual--;
-    servo.write(actual);
-    delay(100); // Aumentado para un movimiento muy lento (100ms por cada grado)
+  // Usamos la librería para mover al destino con la velocidad inicial lenta
+  servo.easeTo(destino, velocidadInicial);
+
+  // Esperamos a que el movimiento termine antes de continuar con el siguiente servo
+  while (servo.isMovingAndEasing()) {
+    delay(1);
   }
 }
 
 void setup() {
-  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON PASOS MANUALES -----
+  // ----- PASO 1: CONFIGURAR EL TIPO DE MOVIMIENTO -----
+  SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
+
+  // ----- PASO 2: ALCANZAR POSICIÓN INICIAL (90) LENTAMENTE -----
   // Esto se hace uno por uno de forma secuencial con una espera entre cada uno.
   alcanzarHomeConPasos(SERVO1, 23, 90);
   delay(espera);
@@ -37,13 +44,6 @@ void setup() {
   delay(espera);
   alcanzarHomeConPasos(SERVO5, 22, 90);
   delay(espera);
-
-  // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
-  SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
   delay(espera);
 }
