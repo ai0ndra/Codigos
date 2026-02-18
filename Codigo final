@@ -8,32 +8,42 @@ ServoEasing SERVO5;
 
 // VELOCIDAD para el movimiento normal (Grados por segundo)
 int velocidad = 30; 
-int espera    = 1500; 
+int velocidadInicial = 5; // Velocidad MUY lenta para el inicio
+int espera    = 1000;
 
-// Función para alcanzar la posición inicial usando "pasos" manuales (1 grado a la vez)
+// Función para alcanzar la posición inicial de forma controlada
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
-  int actual = servo.read(); // Lee la posición actual (normalmente 90 por defecto al hacer attach)
   
-  
-  
+  // Usamos la librería para mover al destino con la velocidad inicial lenta
+  servo.easeTo(destino, velocidadInicial);
+
+  // Esperamos a que el movimiento termine antes de continuar con el siguiente servo
+  while (servo.isMovingAndEasing()) {
+    delay(1);
+  }
 }
 
 void setup() {
-  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON PASOS MANUALES -----
-  // Esto se hace uno por uno de forma secuencial.
-  alcanzarHomeConPasos(SERVO1, 23, 90);
-  alcanzarHomeConPasos(SERVO2, 33, 90);
-  alcanzarHomeConPasos(SERVO3, 32, 90);
-  alcanzarHomeConPasos(SERVO4, 25, 90);
-  alcanzarHomeConPasos(SERVO5, 22, 90);
-
-  // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
+  // ----- PASO 1: CONFIGURAR EL TIPO DE MOVIMIENTO -----
   SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
+
+  // ----- PASO 2: ALCANZAR POSICIÓN INICIAL (90) LENTAMENTE -----
+  // Esto se hace uno por uno de forma secuencial con una espera entre cada uno.
+  alcanzarHomeConPasos(SERVO1, 23, 90);
+  delay(espera);
+  alcanzarHomeConPasos(SERVO2, 33, 90);
+  delay(espera);
+  alcanzarHomeConPasos(SERVO3, 32, 90);
+  delay(espera);
+  alcanzarHomeConPasos(SERVO4, 25, 90);
+  delay(espera);
+  alcanzarHomeConPasos(SERVO5, 22, 90);
+  delay(espera);
 
   delay(espera);
 }
