@@ -1,0 +1,83 @@
+include <ServoEasing.hpp>
+
+
+ServoEasing SERVO1;
+ServoEasing SERVO2;
+ServoEasing SERVO3;
+ServoEasing SERVO4;
+ServoEasing SERVO5;
+
+
+// VELOCIDAD para el movimiento normal (Grados por segundo)
+int velocidad = 30;
+int espera    = 1000;
+
+
+// Función para alcanzar la posición inicial usando "pasos" manuales (1 grado a la vez)
+void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
+  servo.attach(pin);
+  int actual = servo.read(); // Lee la posición actual
+ 
+  // Mover suavemente hacia el destino grado a grado
+  while (actual != destino) {
+    if (actual < destino) actual++;
+    else actual--;
+    servo.write(actual);
+    delay(20); // Ajusta la velocidad del movimiento inicial
+  }
+}
+
+
+void setup() {
+  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON PASOS MANUALES -----
+  // Esto se hace uno por uno de forma secuencial con una espera entre cada uno.
+  alcanzarHomeConPasos(SERVO1, 23, 90);
+  delay(espera);
+  alcanzarHomeConPasos(SERVO2, 33, 90);
+  delay(espera);
+  alcanzarHomeConPasos(SERVO3, 32, 90);
+  delay(espera);
+  alcanzarHomeConPasos(SERVO4, 25, 90);
+  delay(espera);
+  alcanzarHomeConPasos(SERVO5, 22, 90);
+  delay(espera);
+
+
+  // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
+  SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
+
+
+  delay(espera);
+}
+
+
+void loop() {
+  // -------- SECUENCIA 1: IR A HOME (90) CON VELOCIDAD CONTROLADA --------
+  SERVO1.easeTo(90, velocidad);
+  SERVO2.easeTo(90, velocidad);
+  SERVO3.easeTo(90, velocidad);
+  SERVO4.easeTo(90, velocidad);
+  SERVO5.easeTo(90, velocidad);
+  delay(espera);
+
+
+  // -------- SECUENCIA 2: IR A TRABAJO CON VELOCIDAD CONTROLADA --------
+  SERVO1.easeTo(60, velocidad);
+  SERVO4.easeTo(125, velocidad); //(Tenia 60/100)
+  SERVO3.easeTo(65, velocidad);
+  SERVO2.easeTo(120, velocidad);
+  SERVO5.easeTo(35, velocidad); //(Ultima prueba con 38)
+  delay(espera);
+  SERVO2.easeTo(80, velocidad);
+  SERVO4.easeTo(90, velocidad);
+  delay(espera);
+  SERVO1.easeTo(90, velocidad);
+  SERVO2.easeTo(95, velocidad);
+  SERVO3.easeTo(90, velocidad);
+  SERVO4.easeTo(60, velocidad);
+  SERVO5.easeTo(90, velocidad);
+  delay(espera);
