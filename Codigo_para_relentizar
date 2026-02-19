@@ -11,23 +11,22 @@ int velocidad = 30;
 int espera    = 1000;
 
 // Función para alcanzar la posición inicial de forma muy lenta
-// Usamos una velocidad muy baja para forzar el arranque suave (paso a paso)
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
-  // Primero configuramos la posición inicial para evitar saltos bruscos si es posible
+  // Primero configuramos la posición inicial para evitar saltos bruscos
   servo.setEaseTo(destino);
   servo.attach(pin);
 
   // Forzamos un movimiento muy lento (5 grados por segundo) hacia el destino.
-  // Si ya está en el destino, no hará nada, pero si hay desviación se moverá suave.
   servo.easeTo(destino, 5);
-  while (servo.isMovingAndEasing()) {
+
+  // Usamos isMoving() que es más compatible con diferentes versiones de la librería
+  while (servo.isMoving()) {
     delay(1);
   }
 }
 
 void setup() {
-  // IMPORTANTE para estabilidad en ESP32 con la librería ServoEasing
-  ServoEasing::setServoEasingCount(5);
+  // Nota: Se eliminó setServoEasingCount por compatibilidad con versiones antiguas
 
   // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON MOVIMIENTO LENTO -----
   // Esto se hace uno por uno de forma secuencial con una espera entre cada uno.
@@ -44,6 +43,7 @@ void setup() {
 
   // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
   // Establecemos el tipo de curva para los movimientos del loop
+  // EASE_CUBIC_IN_OUT es compatible con la mayoría de versiones
   SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
