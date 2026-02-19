@@ -10,26 +10,26 @@ ServoEasing SERVO5;
 int velocidad = 30;
 int espera    = 1000;
 
-// Función para alcanzar la posición inicial de forma muy lenta
+// Función para alcanzar la posición inicial de forma controlada
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
-  // Primero configuramos la posición inicial para evitar saltos bruscos
-  servo.setEaseTo(destino);
+  // Conectamos el servo
+  // Nota: El servo saltará a 90 (o a la posición por defecto) al hacer attach()
   servo.attach(pin);
 
-  // Forzamos un movimiento muy lento (5 grados por segundo) hacia el destino.
-  servo.easeTo(destino, 5);
+  // Configuramos un movimiento que dure aproximadamente 3 segundos (3000 ms)
+  // para alcanzar la posición de destino (90 grados).
+  // Si el servo ya está en 90, no verás movimiento.
+  servo.easeToD(destino, 3000);
 
-  // Usamos isMoving() que es más compatible con diferentes versiones de la librería
+  // Esperamos a que termine el movimiento
   while (servo.isMoving()) {
     delay(1);
   }
 }
 
 void setup() {
-  // Nota: Se eliminó setServoEasingCount por compatibilidad con versiones antiguas
-
-  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON MOVIMIENTO LENTO -----
-  // Esto se hace uno por uno de forma secuencial con una espera entre cada uno.
+  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) EN 3 SEGUNDOS -----
+  // Esto se hace uno por uno de forma secuencial.
   alcanzarHomeConPasos(SERVO1, 23, 90);
   delay(espera);
   alcanzarHomeConPasos(SERVO2, 33, 90);
@@ -42,8 +42,6 @@ void setup() {
   delay(espera);
 
   // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
-  // Establecemos el tipo de curva para los movimientos del loop
-  // EASE_CUBIC_IN_OUT es compatible con la mayoría de versiones
   SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
   SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
