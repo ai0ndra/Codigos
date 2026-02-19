@@ -10,18 +10,20 @@ ServoEasing SERVO5;
 int velocidad = 30;
 int espera    = 1000;
 
-// Función para alcanzar la posición inicial de forma controlada
+// Función para esperar a que todos los servos terminen su movimiento
+void esperarMovimiento() {
+  while (SERVO1.isMoving() || SERVO2.isMoving() || SERVO3.isMoving() ||
+         SERVO4.isMoving() || SERVO5.isMoving()) {
+    delay(1);
+  }
+}
+
+// Función para alcanzar la posición inicial de forma controlada en el setup
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
-  // Conectamos el servo
-  // Nota: El servo saltará a 90 (o a la posición por defecto) al hacer attach()
+  servo.setEaseTo(destino); // Indicamos la posición antes de activar
   servo.attach(pin);
-
-  // Configuramos un movimiento que dure aproximadamente 3 segundos (3000 ms)
-  // para alcanzar la posición de destino (90 grados).
-  // Si el servo ya está en 90, no verás movimiento.
+  // Movimiento controlado de 3 segundos
   servo.easeToD(destino, 3000);
-
-  // Esperamos a que termine el movimiento
   while (servo.isMoving()) {
     delay(1);
   }
@@ -29,7 +31,7 @@ void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
 
 void setup() {
   // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) EN 3 SEGUNDOS -----
-  // Esto se hace uno por uno de forma secuencial.
+  // Inicialización secuencial para evitar picos de corriente
   alcanzarHomeConPasos(SERVO1, 23, 90);
   delay(espera);
   alcanzarHomeConPasos(SERVO2, 33, 90);
@@ -52,24 +54,27 @@ void setup() {
 }
 
 void loop() {
-  // -------- SECUENCIA 1: IR A HOME (90) CON VELOCIDAD CONTROLADA --------
+  // -------- SECUENCIA 1: IR A HOME (90) - SIMULTÁNEO --------
   SERVO1.easeTo(90, velocidad);
   SERVO2.easeTo(90, velocidad);
   SERVO3.easeTo(90, velocidad);
   SERVO4.easeTo(90, velocidad);
   SERVO5.easeTo(90, velocidad);
+  esperarMovimiento();
   delay(espera);
 
-  // -------- SECUENCIA 2: IR A TRABAJO CON VELOCIDAD CONTROLADA --------
+  // -------- SECUENCIA 2: IR A TRABAJO - SIMULTÁNEO --------
   SERVO1.easeTo(60, velocidad);
   SERVO4.easeTo(125, velocidad);
   SERVO3.easeTo(65, velocidad);
   SERVO2.easeTo(120, velocidad);
   SERVO5.easeTo(35, velocidad);
+  esperarMovimiento();
   delay(espera);
 
   SERVO2.easeTo(80, velocidad);
   SERVO4.easeTo(90, velocidad);
+  esperarMovimiento();
   delay(espera);
 
   SERVO1.easeTo(90, velocidad);
@@ -77,5 +82,6 @@ void loop() {
   SERVO3.easeTo(90, velocidad);
   SERVO4.easeTo(60, velocidad);
   SERVO5.easeTo(90, velocidad);
+  esperarMovimiento();
   delay(espera);
 }
