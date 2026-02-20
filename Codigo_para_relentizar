@@ -10,28 +10,22 @@ ServoEasing SERVO5;
 int velocidad = 30;
 int espera    = 1000;
 
-// Función para esperar a que todos los servos terminen su movimiento
-void esperarMovimiento() {
-  while (SERVO1.isMoving() || SERVO2.isMoving() || SERVO3.isMoving() ||
-         SERVO4.isMoving() || SERVO5.isMoving()) {
-    delay(1);
-  }
-}
-
-// Función para alcanzar la posición inicial de forma controlada en el setup
+// Función para alcanzar la posición inicial usando "pasos" manuales
+// Movemos de 80 a 90 para asegurar que veas movimiento físico.
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
-  servo.setEaseTo(destino); // Indicamos la posición antes de activar
   servo.attach(pin);
-  // Movimiento controlado de 3 segundos
-  servo.easeToD(destino, 3000);
-  while (servo.isMoving()) {
-    delay(1);
+
+  // Forzamos un inicio desde 80 para garantizar que el servo se mueva lentamente hasta 90.
+  // Esto ayuda a confirmar que el código está funcionando y "suaviza" el tramo final.
+  for (int p = 80; p <= destino; p++) {
+    servo.write(p);
+    delay(100); // 100ms por grado = movimiento muy visible y pausado
   }
 }
 
 void setup() {
-  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) EN 3 SEGUNDOS -----
-  // Inicialización secuencial para evitar picos de corriente
+  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON PASOS MANUALES -----
+  // Se hace uno por uno de forma secuencial para evitar picos de corriente (600mA)
   alcanzarHomeConPasos(SERVO1, 23, 90);
   delay(espera);
   alcanzarHomeConPasos(SERVO2, 33, 90);
@@ -54,34 +48,34 @@ void setup() {
 }
 
 void loop() {
-  // -------- SECUENCIA 1: IR A HOME (90) - SIMULTÁNEO --------
-  SERVO1.easeTo(90, velocidad);
-  SERVO2.easeTo(90, velocidad);
-  SERVO3.easeTo(90, velocidad);
-  SERVO4.easeTo(90, velocidad);
-  SERVO5.easeTo(90, velocidad);
-  esperarMovimiento();
+  // -------- SECUENCIA 1: IR A HOME (90) - MOVIMIENTO PARALELO --------
+  SERVO1.startEaseTo(90, velocidad);
+  SERVO2.startEaseTo(90, velocidad);
+  SERVO3.startEaseTo(90, velocidad);
+  SERVO4.startEaseTo(90, velocidad);
+  SERVO5.startEaseTo(90, velocidad);
+  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  // -------- SECUENCIA 2: IR A TRABAJO - SIMULTÁNEO --------
-  SERVO1.easeTo(60, velocidad);
-  SERVO4.easeTo(125, velocidad);
-  SERVO3.easeTo(65, velocidad);
-  SERVO2.easeTo(120, velocidad);
-  SERVO5.easeTo(35, velocidad);
-  esperarMovimiento();
+  // -------- SECUENCIA 2: IR A TRABAJO - MOVIMIENTO PARALELO --------
+  SERVO1.startEaseTo(60, velocidad);
+  SERVO4.startEaseTo(125, velocidad);
+  SERVO3.startEaseTo(65, velocidad);
+  SERVO2.startEaseTo(120, velocidad);
+  SERVO5.startEaseTo(35, velocidad);
+  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO2.easeTo(80, velocidad);
-  SERVO4.easeTo(90, velocidad);
-  esperarMovimiento();
+  SERVO2.startEaseTo(80, velocidad);
+  SERVO4.startEaseTo(90, velocidad);
+  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  SERVO1.easeTo(90, velocidad);
-  SERVO2.easeTo(95, velocidad);
-  SERVO3.easeTo(90, velocidad);
-  SERVO4.easeTo(60, velocidad);
-  SERVO5.easeTo(90, velocidad);
-  esperarMovimiento();
+  SERVO1.startEaseTo(90, velocidad);
+  SERVO2.startEaseTo(95, velocidad);
+  SERVO3.startEaseTo(90, velocidad);
+  SERVO4.startEaseTo(60, velocidad);
+  SERVO5.startEaseTo(90, velocidad);
+  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 }
