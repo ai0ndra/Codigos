@@ -11,31 +11,34 @@ int velocidad = 30;
 int espera    = 1000;
 
 // Función para alcanzar la posición inicial usando "pasos" manuales
-// Movemos de 80 a 90 para asegurar que veas movimiento físico.
+// Entiendo tu punto: el brazo ya se mueve porque no está en 90.
+// El problema es que el ESP32 "cree" que ya está en 90 al arrancar.
+// Por eso, para que el bucle de pasos funcione, lo obligamos a empezar desde 45.
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
 
-  // Forzamos un inicio desde 80 para garantizar que el servo se mueva lentamente hasta 90.
-  // Esto ayuda a confirmar que el código está funcionando y "suaviza" el tramo final.
-  for (int p = 80; p <= destino; p++) {
+  // Como el ESP32 no sabe dónde está el brazo, el primer comando causará un pequeño salto.
+  // Pero a partir de ahí, este bucle asegura un movimiento suave hasta los 90 grados.
+  // Usamos 45 como punto de partida para garantizar que el código REALICE el movimiento lento.
+  for (int p = 45; p <= destino; p++) {
     servo.write(p);
-    delay(100); // 100ms por grado = movimiento muy visible y pausado
+    delay(40); // 40ms por grado = movimiento lento y fluido
   }
 }
 
 void setup() {
   // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON PASOS MANUALES -----
-  // Se hace uno por uno de forma secuencial para evitar picos de corriente (600mA)
+  // Se hace uno por uno para evitar picos de corriente (los 600mA que mencionas)
   alcanzarHomeConPasos(SERVO1, 23, 90);
-  delay(espera);
+  delay(500);
   alcanzarHomeConPasos(SERVO2, 33, 90);
-  delay(espera);
+  delay(500);
   alcanzarHomeConPasos(SERVO3, 32, 90);
-  delay(espera);
+  delay(500);
   alcanzarHomeConPasos(SERVO4, 25, 90);
-  delay(espera);
+  delay(500);
   alcanzarHomeConPasos(SERVO5, 22, 90);
-  delay(espera);
+  delay(500);
 
   // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
   SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
@@ -48,34 +51,31 @@ void setup() {
 }
 
 void loop() {
-  // -------- SECUENCIA 1: IR A HOME (90) - MOVIMIENTO PARALELO --------
-  SERVO1.startEaseTo(90, velocidad);
-  SERVO2.startEaseTo(90, velocidad);
-  SERVO3.startEaseTo(90, velocidad);
-  SERVO4.startEaseTo(90, velocidad);
-  SERVO5.startEaseTo(90, velocidad);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  // -------- SECUENCIA 1: IR A HOME (90) --------
+  // Restaurado exactamente como estaba en tu versión original que funcionaba bien.
+  SERVO1.easeTo(90, velocidad);
+  SERVO2.easeTo(90, velocidad);
+  SERVO3.easeTo(90, velocidad);
+  SERVO4.easeTo(90, velocidad);
+  SERVO5.easeTo(90, velocidad);
   delay(espera);
 
-  // -------- SECUENCIA 2: IR A TRABAJO - MOVIMIENTO PARALELO --------
-  SERVO1.startEaseTo(60, velocidad);
-  SERVO4.startEaseTo(125, velocidad);
-  SERVO3.startEaseTo(65, velocidad);
-  SERVO2.startEaseTo(120, velocidad);
-  SERVO5.startEaseTo(35, velocidad);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  // -------- SECUENCIA 2: IR A TRABAJO --------
+  SERVO1.easeTo(60, velocidad);
+  SERVO4.easeTo(125, velocidad);
+  SERVO3.easeTo(65, velocidad);
+  SERVO2.easeTo(120, velocidad);
+  SERVO5.easeTo(35, velocidad);
   delay(espera);
 
-  SERVO2.startEaseTo(80, velocidad);
-  SERVO4.startEaseTo(90, velocidad);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO2.easeTo(80, velocidad);
+  SERVO4.easeTo(90, velocidad);
   delay(espera);
 
-  SERVO1.startEaseTo(90, velocidad);
-  SERVO2.startEaseTo(95, velocidad);
-  SERVO3.startEaseTo(90, velocidad);
-  SERVO4.startEaseTo(60, velocidad);
-  SERVO5.startEaseTo(90, velocidad);
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  SERVO1.easeTo(90, velocidad);
+  SERVO2.easeTo(95, velocidad);
+  SERVO3.easeTo(90, velocidad);
+  SERVO4.easeTo(60, velocidad);
+  SERVO5.easeTo(90, velocidad);
   delay(espera);
 }
