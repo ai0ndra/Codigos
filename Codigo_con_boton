@@ -7,69 +7,67 @@ ServoEasing SERVO4;
 ServoEasing SERVO5;
 
 // VELOCIDAD para el movimiento normal (Grados por segundo)
-int velocidad = 40;
+int velocidad = 30;
 int espera    = 1000;
 
-// Función para alcanzar la posición inicial usando "pasos" manuales
-// Entiendo tu punto: el brazo ya se mueve porque no está en 90.
-// El problema es que el ESP32 "cree" que ya está en 90 al arrancar.
-// Por eso, para que el bucle de pasos funcione, lo obligamos a empezar desde 45.
+// Configuración del botón
+const int BUTTON_PIN = 19; // Puede ser el pin 19 o 21. Conectar botón entre el pin y GND.
+bool firstPress = true;
+
+// Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
+// Se usa en la primera pulsación para evitar movimientos bruscos al arrancar.
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
-  
-  // Como el ESP32 no sabe dónde está el brazo, el primer comando causará un pequeño salto.
-  // Pero a partir de ahí, este bucle asegura un movimiento suave hasta los 90 grados.
-  // Usamos 45 como punto de partida para garantizar que el código REALICE el movimiento lento.
+  // Forzamos un inicio en 45 grados para garantizar un movimiento lento y visible hasta 90.
+  // Esto es necesario porque el ESP32 no conoce la posición física real al encenderse.
   for (int p = 45; p <= destino; p++) {
     servo.write(p);
-    delay(40); // 40ms por grado = movimiento lento y fluido
+    delay(40); // 40ms por grado = movimiento fluido
   }
 }
 
 void setup() {
-  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON PASOS MANUALES -----
-  // Se hace uno por uno para evitar picos de corriente (los 600mA que mencionas)
-  alcanzarHomeConPasos(SERVO1, 23, 90);
-  delay(500);
-  alcanzarHomeConPasos(SERVO2, 33, 90);
-  delay(500);
-  alcanzarHomeConPasos(SERVO3, 32, 90);
-  delay(500);
-  alcanzarHomeConPasos(SERVO4, 25, 90);
-  delay(500);
-  alcanzarHomeConPasos(SERVO5, 22, 90);
-  delay(500);
+  Serial.begin(115200);
 
-  // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
-  SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
-  SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
+  // IMPORTANTE para estabilidad en algunos ESP32
+  // ServoEasing::setServoEasingCount(5);
 
-  delay(espera);
+  // Configurar el pin del botón con resistencia pull-up interna
+  pinMode(BUTTON_PIN, INPUT_PULLUP);
+
+  Serial.println("Brazo Robot Listo.");
+  Serial.println("Esperando pulsacion del boton para comenzar...");
 }
 
-void loop() {
+void ejecutarSecuencia() {
+  Serial.println("Ejecutando secuencia de trabajo...");
+
   // -------- SECUENCIA 1: IR A HOME (90) --------
-  // Restaurado exactamente como estaba en tu versión original que funcionaba bien.
+  // Movimiento coordinado de todos los servos a la vez
   SERVO1.easeTo(90, velocidad);
   SERVO2.easeTo(90, velocidad);
   SERVO3.easeTo(90, velocidad);
   SERVO4.easeTo(90, velocidad);
   SERVO5.easeTo(90, velocidad);
+
+  // Esperar a que todos los servos terminen antes de continuar
+  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   // -------- SECUENCIA 2: IR A TRABAJO --------
   SERVO1.easeTo(60, velocidad);
-  SERVO4.easeTo(125, velocidad); //
-  SERVO3.easeTo(55, velocidad);// mas vertical 65
-  SERVO2.easeTo(125, velocidad);//mas abajo 120 135max antes del cuelo --115 esta aarriba y recto
+  SERVO4.easeTo(125, velocidad);
+  SERVO3.easeTo(55, velocidad);
+  SERVO2.easeTo(125, velocidad);
   SERVO5.easeTo(45, velocidad); 
+
+  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
   
   SERVO2.easeTo(80, velocidad);
   SERVO4.easeTo(90, velocidad);
+
+  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
   
   SERVO1.easeTo(90, velocidad);
@@ -77,5 +75,54 @@ void loop() {
   SERVO3.easeTo(90, velocidad);
   SERVO4.easeTo(60, velocidad);
   SERVO5.easeTo(90, velocidad);
+
+  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
+
+  Serial.println("Secuencia finalizada. Sistema detenido.");
+}
+
+void loop() {
+  // Detectar si el botón ha sido presionado (LOW activo por INPUT_PULLUP)
+  if (digitalRead(BUTTON_PIN) == LOW) {
+    delay(50); // Pequeño delay para evitar rebotes (debounce)
+    if (digitalRead(BUTTON_PIN) == LOW) {
+
+      // Lógica de la PRIMERA pulsación (Homing secuencial lento)
+      if (firstPress) {
+        Serial.println("Primera pulsacion detectada: Realizando Homing de seguridad...");
+
+        alcanzarHomeConPasos(SERVO1, 23, 90);
+        delay(500);
+        alcanzarHomeConPasos(SERVO2, 33, 90);
+        delay(500);
+        alcanzarHomeConPasos(SERVO3, 32, 90);
+        delay(500);
+        alcanzarHomeConPasos(SERVO4, 25, 90);
+        delay(500);
+        alcanzarHomeConPasos(SERVO5, 22, 90);
+        delay(500);
+
+        // Configuramos el tipo de suavizado (Easing) para los movimientos futuros
+        SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
+        SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
+        SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
+        SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
+        SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
+
+        firstPress = false; // Marcamos que el inicio de seguridad ya se completó
+        delay(espera);
+      }
+
+      // Ejecutar la secuencia de movimientos
+      ejecutarSecuencia();
+
+      Serial.println("Esperando nueva pulsacion para repetir la secuencia...");
+
+      // Bloqueo para esperar a que el usuario suelte el botón
+      while (digitalRead(BUTTON_PIN) == LOW) {
+        delay(10);
+      }
+    }
+  }
 }
