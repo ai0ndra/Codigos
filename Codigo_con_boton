@@ -11,15 +11,14 @@ int velocidad = 30;
 int espera    = 1000;
 
 // Configuración del botón
-const int BUTTON_PIN = 19; // Puede ser el pin 19 o 21. Conectar botón entre el pin y GND.
+const int BUTTON_PIN = 19; // Pin de entrada para el botón
+const int GROUND_PIN = 21; // Pin que actuará como Tierra (GND) para el botón
 bool firstPress = true;
 
 // Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
-// Se usa en la primera pulsación para evitar movimientos bruscos al arrancar.
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
   // Forzamos un inicio en 45 grados para garantizar un movimiento lento y visible hasta 90.
-  // Esto es necesario porque el ESP32 no conoce la posición física real al encenderse.
   for (int p = 45; p <= destino; p++) {
     servo.write(p);
     delay(40); // 40ms por grado = movimiento fluido
@@ -29,28 +28,29 @@ void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
 void setup() {
   Serial.begin(115200);
 
-  // IMPORTANTE para estabilidad en algunos ESP32
-  // ServoEasing::setServoEasingCount(5);
+  // Configurar el pin 21 como salida en LOW para que actúe como GND para el botón
+  pinMode(GROUND_PIN, OUTPUT);
+  digitalWrite(GROUND_PIN, LOW);
 
-  // Configurar el pin del botón con resistencia pull-up interna
+  // Configurar el pin 19 como entrada con Pull-up.
+  // Como el botón es NORMALMENTE CERRADO (NC), el pin leerá LOW mientras no se pulse.
+  // Al pulsar el botón, el circuito se ABRE y el pin leerá HIGH.
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
   Serial.println("Brazo Robot Listo.");
-  Serial.println("Esperando pulsacion del boton para comenzar...");
+  Serial.println("Esperando que se abra el boton (NC) para comenzar...");
 }
 
 void ejecutarSecuencia() {
   Serial.println("Ejecutando secuencia de trabajo...");
 
   // -------- SECUENCIA 1: IR A HOME (90) --------
-  // Movimiento coordinado de todos los servos a la vez
   SERVO1.easeTo(90, velocidad);
   SERVO2.easeTo(90, velocidad);
   SERVO3.easeTo(90, velocidad);
   SERVO4.easeTo(90, velocidad);
   SERVO5.easeTo(90, velocidad);
 
-  // Esperar a que todos los servos terminen antes de continuar
   ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
@@ -79,18 +79,20 @@ void ejecutarSecuencia() {
   ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
-  Serial.println("Secuencia finalizada. Sistema detenido.");
+  Serial.println("Secuencia finalizada. Esperando nueva pulsacion...");
 }
 
 void loop() {
-  // Detectar si el botón ha sido presionado (LOW activo por INPUT_PULLUP)
-  if (digitalRead(BUTTON_PIN) == LOW) {
-    delay(50); // Pequeño delay para evitar rebotes (debounce)
-    if (digitalRead(BUTTON_PIN) == LOW) {
+  // Como el botón es NC (Normalmente Cerrado), el pin 19 está conectado a GND (Pin 21) normalmente.
+  // Al presionar el botón, el contacto se ABRE y el pin 19 sube a HIGH por el Pull-up.
 
-      // Lógica de la PRIMERA pulsación (Homing secuencial lento)
+  if (digitalRead(BUTTON_PIN) == HIGH) {
+    delay(50); // Antirebote
+    if (digitalRead(BUTTON_PIN) == HIGH) {
+
+      // Primera pulsación: Homing lento de seguridad
       if (firstPress) {
-        Serial.println("Primera pulsacion detectada: Realizando Homing de seguridad...");
+        Serial.println("Activacion detectada: Realizando Homing inicial...");
 
         alcanzarHomeConPasos(SERVO1, 23, 90);
         delay(500);
@@ -103,24 +105,21 @@ void loop() {
         alcanzarHomeConPasos(SERVO5, 22, 90);
         delay(500);
 
-        // Configuramos el tipo de suavizado (Easing) para los movimientos futuros
         SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
         SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
         SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
         SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
         SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
-        firstPress = false; // Marcamos que el inicio de seguridad ya se completó
+        firstPress = false;
         delay(espera);
       }
 
-      // Ejecutar la secuencia de movimientos
+      // Ejecutar la secuencia principal
       ejecutarSecuencia();
 
-      Serial.println("Esperando nueva pulsacion para repetir la secuencia...");
-
-      // Bloqueo para esperar a que el usuario suelte el botón
-      while (digitalRead(BUTTON_PIN) == LOW) {
+      // Esperar a que el botón se vuelva a cerrar (vuelva a LOW) antes de permitir otro ciclo
+      while (digitalRead(BUTTON_PIN) == HIGH) {
         delay(10);
       }
     }
