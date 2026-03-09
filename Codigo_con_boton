@@ -1,0 +1,81 @@
+#include <ServoEasing.hpp>
+
+ServoEasing SERVO1;
+ServoEasing SERVO2;
+ServoEasing SERVO3;
+ServoEasing SERVO4;
+ServoEasing SERVO5;
+
+// VELOCIDAD para el movimiento normal (Grados por segundo)
+int velocidad = 40;
+int espera    = 1000;
+
+// Función para alcanzar la posición inicial usando "pasos" manuales
+// Entiendo tu punto: el brazo ya se mueve porque no está en 90.
+// El problema es que el ESP32 "cree" que ya está en 90 al arrancar.
+// Por eso, para que el bucle de pasos funcione, lo obligamos a empezar desde 45.
+void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
+  servo.attach(pin);
+  
+  // Como el ESP32 no sabe dónde está el brazo, el primer comando causará un pequeño salto.
+  // Pero a partir de ahí, este bucle asegura un movimiento suave hasta los 90 grados.
+  // Usamos 45 como punto de partida para garantizar que el código REALICE el movimiento lento.
+  for (int p = 45; p <= destino; p++) {
+    servo.write(p);
+    delay(40); // 40ms por grado = movimiento lento y fluido
+  }
+}
+
+void setup() {
+  // ----- PASO 1: ALCANZAR POSICIÓN INICIAL (90) CON PASOS MANUALES -----
+  // Se hace uno por uno para evitar picos de corriente (los 600mA que mencionas)
+  alcanzarHomeConPasos(SERVO1, 23, 90);
+  delay(500);
+  alcanzarHomeConPasos(SERVO2, 33, 90);
+  delay(500);
+  alcanzarHomeConPasos(SERVO3, 32, 90);
+  delay(500);
+  alcanzarHomeConPasos(SERVO4, 25, 90);
+  delay(500);
+  alcanzarHomeConPasos(SERVO5, 22, 90);
+  delay(500);
+
+  // ----- PASO 2: CONFIGURAR LIBRERÍA PARA EL RESTO DEL CÓDIGO -----
+  SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
+  SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
+
+  delay(espera);
+}
+
+void loop() {
+  // -------- SECUENCIA 1: IR A HOME (90) --------
+  // Restaurado exactamente como estaba en tu versión original que funcionaba bien.
+  SERVO1.easeTo(90, velocidad);
+  SERVO2.easeTo(90, velocidad);
+  SERVO3.easeTo(90, velocidad);
+  SERVO4.easeTo(90, velocidad);
+  SERVO5.easeTo(90, velocidad);
+  delay(espera);
+
+  // -------- SECUENCIA 2: IR A TRABAJO --------
+  SERVO1.easeTo(60, velocidad);
+  SERVO4.easeTo(125, velocidad); //
+  SERVO3.easeTo(55, velocidad);// mas vertical 65
+  SERVO2.easeTo(125, velocidad);//mas abajo 120 135max antes del cuelo --115 esta aarriba y recto
+  SERVO5.easeTo(45, velocidad); 
+  delay(espera);
+  
+  SERVO2.easeTo(80, velocidad);
+  SERVO4.easeTo(90, velocidad);
+  delay(espera);
+  
+  SERVO1.easeTo(90, velocidad);
+  SERVO2.easeTo(95, velocidad);
+  SERVO3.easeTo(90, velocidad);
+  SERVO4.easeTo(60, velocidad);
+  SERVO5.easeTo(90, velocidad);
+  delay(espera);
+}
