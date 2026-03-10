@@ -51,7 +51,8 @@ void ejecutarSecuencia() {
   SERVO4.easeTo(90, velocidad);
   SERVO5.easeTo(90, velocidad);
 
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  // Sincronizar movimientos
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   // -------- SECUENCIA 2: IR A TRABAJO --------
@@ -61,13 +62,13 @@ void ejecutarSecuencia() {
   SERVO2.easeTo(125, velocidad);
   SERVO5.easeTo(45, velocidad); 
 
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
   
   SERVO2.easeTo(80, velocidad);
   SERVO4.easeTo(90, velocidad);
 
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
   
   SERVO1.easeTo(90, velocidad);
@@ -76,7 +77,7 @@ void ejecutarSecuencia() {
   SERVO4.easeTo(60, velocidad);
   SERVO5.easeTo(90, velocidad);
 
-  ServoEasing::synchronizeAllServosStartAndWaitForAllServosToStop();
+  synchronizeAllServosStartAndWaitForAllServosToStop();
   delay(espera);
 
   Serial.println("Secuencia finalizada. Esperando nueva pulsacion...");
