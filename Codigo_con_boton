@@ -10,12 +10,13 @@ ServoEasing SERVO5;
 int velocidad = 30;
 int espera    = 1000;
 
-// Configuración del botón
-const int BUTTON_PIN = 19; // Pin de entrada para el botón
-const int GROUND_PIN = 21; // Pin que actuará como Tierra (GND) para el botón
+// Configuración de los botones (IMPORTANTE: Conectar ambos a un pin GND físico)
+const int START_BUTTON_PIN = 19; // Botón para Iniciar/Reanudar (D19 a GND)
+const int PAUSE_BUTTON_PIN = 21; // Botón para Pausar (D21 a GND)
 
 bool firstPress = true;
-int lastButtonState = HIGH; // Estado anterior del botón (NO abierto = HIGH por Pull-up)
+int lastStartState = HIGH;
+bool isPaused = false;
 
 // Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
@@ -27,87 +28,130 @@ void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   }
 }
 
+// Verifica el botón de pausa y detiene/reanuda los servos
+void verificarBotonPausa() {
+  // Si se presiona el botón de PAUSA (D21 va a LOW)
+  if (digitalRead(PAUSE_BUTTON_PIN) == LOW) {
+    delay(50); // Debounce
+    if (digitalRead(PAUSE_BUTTON_PIN) == LOW) {
+      if (!isPaused) {
+        Serial.println("PAUSA ACTIVADA.");
+        ServoEasing::pauseAllServos();
+        isPaused = true;
+      } else {
+        Serial.println("REANUDANDO...");
+        ServoEasing::resumeAllServos();
+        isPaused = false;
+      }
+      // Esperar a que suelte el botón
+      while (digitalRead(PAUSE_BUTTON_PIN) == LOW) delay(10);
+    }
+  }
+
+  // Mientras esté pausado, nos quedamos bloqueados aquí vigilando el botón
+  while (isPaused) {
+    if (digitalRead(PAUSE_BUTTON_PIN) == LOW) {
+      delay(50);
+      Serial.println("REANUDANDO...");
+      ServoEasing::resumeAllServos();
+      isPaused = false;
+      while (digitalRead(PAUSE_BUTTON_PIN) == LOW) delay(10);
+    }
+    delay(10);
+  }
+}
+
+// Función para esperar a que termine el movimiento sin bloquear el botón de pausa
+void esperarMovimientoConPausa() {
+  // Mientras cualquier servo esté en movimiento
+  while (SERVO1.isMovingAndEasing() || SERVO2.isMovingAndEasing() ||
+         SERVO3.isMovingAndEasing() || SERVO4.isMovingAndEasing() ||
+         SERVO5.isMovingAndEasing()) {
+
+    verificarBotonPausa();
+    delay(10);
+  }
+}
+
+// Función para esperar un tiempo (delay) sin bloquear el botón de pausa
+void esperarPausaYDelay(int ms) {
+  unsigned long start = millis();
+  while (millis() - start < ms) {
+    verificarBotonPausa();
+    delay(10);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
 
-  // Configurar el pin 21 como salida en LOW para que actúe como GND para el botón
-  pinMode(GROUND_PIN, OUTPUT);
-  digitalWrite(GROUND_PIN, LOW);
+  // Configurar los pines de los botones como entrada con Pull-up interno
+  pinMode(START_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(PAUSE_BUTTON_PIN, INPUT_PULLUP);
 
-  // Pequeña pausa para estabilizar voltajes antes de leer
   delay(100);
-
-  // Configurar el pin 19 como entrada con Pull-up.
-  // Como el botón es NORMALMENTE ABIERTO (NO), el pin leerá HIGH mientras no se pulse.
-  // Al pulsar el botón, el circuito se CIERRA hacia Pin 21 (GND) y el pin leerá LOW.
-  pinMode(BUTTON_PIN, INPUT_PULLUP);
-
-  // Leemos el estado inicial para evitar disparos falsos al arrancar
-  lastButtonState = digitalRead(BUTTON_PIN);
+  lastStartState = digitalRead(START_BUTTON_PIN);
 
   Serial.println("Brazo Robot Listo.");
-  Serial.println("Esperando que se pulse el boton (NO) para comenzar...");
+  Serial.println("Conecta D19 a GND para INICIAR.");
+  Serial.println("Conecta D21 a GND para PAUSAR/REANUDAR.");
 }
 
 void ejecutarSecuencia() {
-  Serial.println("Ejecutando secuencia de trabajo...");
+  Serial.println("Iniciando secuencia...");
 
   // -------- SECUENCIA 1: IR A HOME (90) --------
-  SERVO1.easeTo(90, velocidad);
-  SERVO2.easeTo(90, velocidad);
-  SERVO3.easeTo(90, velocidad);
-  SERVO4.easeTo(90, velocidad);
-  SERVO5.easeTo(90, velocidad);
+  SERVO1.setEaseTo(90, velocidad);
+  SERVO2.setEaseTo(90, velocidad);
+  SERVO3.setEaseTo(90, velocidad);
+  SERVO4.setEaseTo(90, velocidad);
+  SERVO5.setEaseTo(90, velocidad);
 
-  // Sincronizar movimientos
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
+  ServoEasing::synchronizeAllServosStart();
+  esperarMovimientoConPausa();
+  esperarPausaYDelay(espera);
 
   // -------- SECUENCIA 2: IR A TRABAJO --------
-  SERVO1.easeTo(60, velocidad);
-  SERVO4.easeTo(125, velocidad);
-  SERVO3.easeTo(55, velocidad);
-  SERVO2.easeTo(125, velocidad);
-  SERVO5.easeTo(45, velocidad); 
+  SERVO1.setEaseTo(60, velocidad);
+  SERVO4.setEaseTo(125, velocidad);
+  SERVO3.setEaseTo(55, velocidad);
+  SERVO2.setEaseTo(125, velocidad);
+  SERVO5.setEaseTo(45, velocidad);
 
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
+  ServoEasing::synchronizeAllServosStart();
+  esperarMovimientoConPausa();
+  esperarPausaYDelay(espera);
+
+  SERVO2.setEaseTo(80, velocidad);
+  SERVO4.setEaseTo(90, velocidad);
+
+  ServoEasing::synchronizeAllServosStart();
+  esperarMovimientoConPausa();
+  esperarPausaYDelay(espera);
+
+  SERVO1.setEaseTo(90, velocidad);
+  SERVO2.setEaseTo(95, velocidad);
+  SERVO3.setEaseTo(90, velocidad);
+  SERVO4.setEaseTo(60, velocidad);
+  SERVO5.setEaseTo(90, velocidad);
   
-  SERVO2.easeTo(80, velocidad);
-  SERVO4.easeTo(90, velocidad);
-
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
+  ServoEasing::synchronizeAllServosStart();
+  esperarMovimientoConPausa();
+  esperarPausaYDelay(espera);
   
-  SERVO1.easeTo(90, velocidad);
-  SERVO2.easeTo(95, velocidad);
-  SERVO3.easeTo(90, velocidad);
-  SERVO4.easeTo(60, velocidad);
-  SERVO5.easeTo(90, velocidad);
-
-  synchronizeAllServosStartAndWaitForAllServosToStop();
-  delay(espera);
-
-  Serial.println("Secuencia finalizada. Esperando nueva pulsacion...");
+  Serial.println("Secuencia finalizada.");
 }
 
 void loop() {
-  // Leer el estado actual del botón
-  int currentButtonState = digitalRead(BUTTON_PIN);
+  int currentStartState = digitalRead(START_BUTTON_PIN);
 
-  // Detectar el CAMBIO de estado (de HIGH a LOW)
-  // HIGH = Botón NO abierto (reposo, circuito abierto)
-  // LOW = Botón pulsado (circuito cerrado a GND)
-  if (currentButtonState == LOW && lastButtonState == HIGH) {
-    delay(50); // Debounce
+  // Detectar pulsación de INICIO (HIGH a LOW)
+  if (currentStartState == LOW && lastStartState == HIGH) {
+    delay(50);
+    if (digitalRead(START_BUTTON_PIN) == LOW) {
 
-    // Volvemos a leer para confirmar la pulsación real
-    if (digitalRead(BUTTON_PIN) == LOW) {
-
-      // Primera pulsación: Homing lento de seguridad
       if (firstPress) {
-        Serial.println("Primera pulsacion detectada: Realizando Homing inicial...");
-
+        Serial.println("Realizando Homing de seguridad...");
         alcanzarHomeConPasos(SERVO1, 23, 90);
         delay(500);
         alcanzarHomeConPasos(SERVO2, 33, 90);
@@ -126,20 +170,14 @@ void loop() {
         SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
         firstPress = false;
-        delay(espera);
+        esperarPausaYDelay(espera);
       }
 
-      // Ejecutar la secuencia principal
       ejecutarSecuencia();
-
-      // Después de la secuencia, actualizamos el estado para no repetir
-      currentButtonState = digitalRead(BUTTON_PIN);
+      currentStartState = digitalRead(START_BUTTON_PIN);
     }
   }
 
-  // Guardar el estado actual para la siguiente comparación
-  lastButtonState = currentButtonState;
-
-  // Pequeño retardo para no saturar el CPU
+  lastStartState = currentStartState;
   delay(20);
 }
