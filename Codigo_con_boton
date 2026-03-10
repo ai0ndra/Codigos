@@ -13,7 +13,9 @@ int espera    = 1000;
 // Configuración del botón
 const int BUTTON_PIN = 19; // Pin de entrada para el botón
 const int GROUND_PIN = 21; // Pin que actuará como Tierra (GND) para el botón
+
 bool firstPress = true;
+int lastButtonState = HIGH; // Estado anterior del botón (NO abierto = HIGH por Pull-up)
 
 // Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
@@ -32,13 +34,19 @@ void setup() {
   pinMode(GROUND_PIN, OUTPUT);
   digitalWrite(GROUND_PIN, LOW);
 
+  // Pequeña pausa para estabilizar voltajes antes de leer
+  delay(100);
+
   // Configurar el pin 19 como entrada con Pull-up.
-  // Como el botón es NORMALMENTE CERRADO (NC), el pin leerá LOW mientras no se pulse.
-  // Al pulsar el botón, el circuito se ABRE y el pin leerá HIGH.
+  // Como el botón es NORMALMENTE ABIERTO (NO), el pin leerá HIGH mientras no se pulse.
+  // Al pulsar el botón, el circuito se CIERRA hacia Pin 21 (GND) y el pin leerá LOW.
   pinMode(BUTTON_PIN, INPUT_PULLUP);
 
+  // Leemos el estado inicial para evitar disparos falsos al arrancar
+  lastButtonState = digitalRead(BUTTON_PIN);
+
   Serial.println("Brazo Robot Listo.");
-  Serial.println("Esperando que se abra el boton (NC) para comenzar...");
+  Serial.println("Esperando que se pulse el boton (NO) para comenzar...");
 }
 
 void ejecutarSecuencia() {
@@ -84,16 +92,21 @@ void ejecutarSecuencia() {
 }
 
 void loop() {
-  // Como el botón es NC (Normalmente Cerrado), el pin 19 está conectado a GND (Pin 21) normalmente.
-  // Al presionar el botón, el contacto se ABRE y el pin 19 sube a HIGH por el Pull-up.
+  // Leer el estado actual del botón
+  int currentButtonState = digitalRead(BUTTON_PIN);
 
-  if (digitalRead(BUTTON_PIN) == HIGH) {
-    delay(50); // Antirebote
-    if (digitalRead(BUTTON_PIN) == HIGH) {
+  // Detectar el CAMBIO de estado (de HIGH a LOW)
+  // HIGH = Botón NO abierto (reposo, circuito abierto)
+  // LOW = Botón pulsado (circuito cerrado a GND)
+  if (currentButtonState == LOW && lastButtonState == HIGH) {
+    delay(50); // Debounce
+
+    // Volvemos a leer para confirmar la pulsación real
+    if (digitalRead(BUTTON_PIN) == LOW) {
 
       // Primera pulsación: Homing lento de seguridad
       if (firstPress) {
-        Serial.println("Activacion detectada: Realizando Homing inicial...");
+        Serial.println("Primera pulsacion detectada: Realizando Homing inicial...");
 
         alcanzarHomeConPasos(SERVO1, 23, 90);
         delay(500);
@@ -119,10 +132,14 @@ void loop() {
       // Ejecutar la secuencia principal
       ejecutarSecuencia();
 
-      // Esperar a que el botón se vuelva a cerrar (vuelva a LOW) antes de permitir otro ciclo
-      while (digitalRead(BUTTON_PIN) == HIGH) {
-        delay(10);
-      }
+      // Después de la secuencia, actualizamos el estado para no repetir
+      currentButtonState = digitalRead(BUTTON_PIN);
     }
   }
+
+  // Guardar el estado actual para la siguiente comparación
+  lastButtonState = currentButtonState;
+
+  // Pequeño retardo para no saturar el CPU
+  delay(20);
 }
