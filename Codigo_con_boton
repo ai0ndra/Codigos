@@ -11,8 +11,8 @@ int velocidad = 30;
 int espera    = 1000;
 
 // Configuración de los botones (IMPORTANTE: Conectar ambos a un pin GND físico)
-const int START_BUTTON_PIN = 19; // Botón para Iniciar/Reanudar (D19 a GND)
-const int PAUSE_BUTTON_PIN = 21; // Botón para Pausar (D21 a GND)
+const int START_BUTTON_PIN = 19; // Botón momentáneo para Iniciar (D19 a GND)
+const int PAUSE_SWITCH_PIN = 21; // Interruptor sostenido (Switch) para Pausar (D21 a GND)
 
 bool firstPress = true;
 int lastStartState = HIGH;
@@ -28,40 +28,31 @@ void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   }
 }
 
-// Verifica el botón de pausa y detiene/reanuda los servos
+// Verifica el interruptor de pausa (Lógica para interruptor sostenido/latching)
 void verificarBotonPausa() {
-  // Si se presiona el botón de PAUSA (D21 va a LOW)
-  if (digitalRead(PAUSE_BUTTON_PIN) == LOW) {
-    delay(50); // Debounce
-    if (digitalRead(PAUSE_BUTTON_PIN) == LOW) {
-      if (!isPaused) {
-        Serial.println("PAUSA ACTIVADA.");
-        ServoEasing::pauseAllServos();
-        isPaused = true;
-      } else {
-        Serial.println("REANUDANDO...");
-        ServoEasing::resumeAllServos();
-        isPaused = false;
-      }
-      // Esperar a que suelte el botón
-      while (digitalRead(PAUSE_BUTTON_PIN) == LOW) delay(10);
+  // Si el interruptor está ACTIVADO (D21 está en LOW de forma sostenida)
+  if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
+    if (!isPaused) {
+      Serial.println("PAUSA ACTIVADA (Interruptor Cerrado).");
+      ServoEasing::pauseAllServos();
+      isPaused = true;
     }
-  }
 
-  // Mientras esté pausado, nos quedamos bloqueados aquí vigilando el botón
-  while (isPaused) {
-    if (digitalRead(PAUSE_BUTTON_PIN) == LOW) {
+    // Mientras el interruptor siga cerrado (LOW), nos quedamos bloqueados aquí
+    while (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
       delay(50);
-      Serial.println("REANUDANDO...");
+    }
+
+    // Al abrir el interruptor (Vuelve a HIGH), reanudamos automáticamente
+    if (isPaused) {
+      Serial.println("REANUDANDO (Interruptor Abierto)...");
       ServoEasing::resumeAllServos();
       isPaused = false;
-      while (digitalRead(PAUSE_BUTTON_PIN) == LOW) delay(10);
     }
-    delay(10);
   }
 }
 
-// Función para esperar a que termine el movimiento sin bloquear el botón de pausa
+// Función para esperar a que termine el movimiento sin bloquear el interruptor de pausa
 void esperarMovimientoConPausa() {
   // Mientras cualquier servo esté en movimiento
   while (SERVO1.isMovingAndEasing() || SERVO2.isMovingAndEasing() ||
@@ -73,7 +64,7 @@ void esperarMovimientoConPausa() {
   }
 }
 
-// Función para esperar un tiempo (delay) sin bloquear el botón de pausa
+// Función para esperar un tiempo (delay) sin bloquear el interruptor de pausa
 void esperarPausaYDelay(int ms) {
   unsigned long start = millis();
   while (millis() - start < ms) {
@@ -87,14 +78,13 @@ void setup() {
 
   // Configurar los pines de los botones como entrada con Pull-up interno
   pinMode(START_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(PAUSE_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
 
   delay(100);
   lastStartState = digitalRead(START_BUTTON_PIN);
 
   Serial.println("Brazo Robot Listo.");
-  Serial.println("Conecta D19 a GND para INICIAR.");
-  Serial.println("Conecta D21 a GND para PAUSAR/REANUDAR.");
+  Serial.println("D19: Boton Inicio | D21: Interruptor Pausa (Sostenido)");
 }
 
 void ejecutarSecuencia() {
@@ -134,15 +124,21 @@ void ejecutarSecuencia() {
   SERVO3.setEaseTo(90, velocidad);
   SERVO4.setEaseTo(60, velocidad);
   SERVO5.setEaseTo(90, velocidad);
-  
+
   ServoEasing::synchronizeAllServosStart();
   esperarMovimientoConPausa();
   esperarPausaYDelay(espera);
-  
+
   Serial.println("Secuencia finalizada.");
 }
 
 void loop() {
+  // Si el interruptor de pausa está activado, no permitimos iniciar la secuencia
+  if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
+    verificarBotonPausa();
+    return;
+  }
+
   int currentStartState = digitalRead(START_BUTTON_PIN);
 
   // Detectar pulsación de INICIO (HIGH a LOW)
