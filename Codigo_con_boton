@@ -18,16 +18,12 @@ bool firstPress = true;
 int lastStartState = HIGH;
 bool isPaused = false;
 
-// Variables para guardar los objetivos actuales (para poder reanudar)
-int t1, t2, t3, t4, t5;
-
 // Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
-  // Forzamos un inicio en 45 grados para garantizar un movimiento lento y visible hasta 90.
   for (int p = 45; p <= destino; p++) {
     servo.write(p);
-    delay(40); // 40ms por grado = movimiento fluido
+    delay(40);
   }
 }
 
@@ -36,7 +32,6 @@ void verificarBotonPausa() {
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
     if (!isPaused) {
       Serial.println("PAUSA ACTIVADA.");
-      // Intentar frenar los servos de inmediato
       SERVO1.stop();
       SERVO2.stop();
       SERVO3.stop();
@@ -45,7 +40,7 @@ void verificarBotonPausa() {
       isPaused = true;
     }
 
-    // Bloqueo total mientras el interruptor esté cerrado
+    // Mientras el interruptor siga cerrado, bloqueamos aquí
     while (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
       delay(50);
     }
@@ -53,41 +48,32 @@ void verificarBotonPausa() {
     if (isPaused) {
       Serial.println("REANUDANDO...");
       isPaused = false;
-      // Al salir, la función que llamó a verificarBotonPausa volverá a lanzar los objetivos
     }
   }
 }
 
-// Función para mover servos con detección de pausa inmediata
-void moverServos(int a1, int a2, int a3, int a4, int a5) {
-  // Guardamos los objetivos por si hay que reanudar
-  t1 = a1; t2 = a2; t3 = a3; t4 = a4; t5 = a5;
+// Función para mover UN SOLO SERVO de forma secuencial y con detección de pausa REANUDABLE
+void moverUnServo(ServoEasing &s, int target) {
+  // Mientras el servo no haya llegado a su destino
+  while (s.getCurrentAngle() != target) {
 
-  bool terminados = false;
-  while (!terminados) {
-    // Lanzar movimiento de forma individual para evitar errores de sincronización de la librería
-    SERVO1.startEaseTo(t1, velocidad);
-    SERVO2.startEaseTo(t2, velocidad);
-    SERVO3.startEaseTo(t3, velocidad);
-    SERVO4.startEaseTo(t4, velocidad);
-    SERVO5.startEaseTo(t5, velocidad);
+    // Iniciar o continuar movimiento hacia el objetivo
+    s.startEaseTo(target, velocidad);
 
-    // Esperar a que terminen, vigilando el interruptor de pausa
-    while (SERVO1.isMoving() || SERVO2.isMoving() ||
-           SERVO3.isMoving() || SERVO4.isMoving() ||
-           SERVO5.isMoving()) {
-
+    // Mientras se esté moviendo hacia el objetivo
+    while (s.isMoving()) {
       if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
         verificarBotonPausa();
-        // Si hubo una pausa, rompemos este bucle interno para relanzar los objetivos al reanudar
+        // Si pausamos, salimos de este bucle interno para re-evaluar la posición al reanudar
         break;
       }
       delay(10);
     }
 
-    // Si no estamos en pausa y ya no se mueven, hemos terminado este paso
-    if (!isPaused && !SERVO1.isMoving() && !SERVO2.isMoving() && !SERVO3.isMoving() && !SERVO4.isMoving() && !SERVO5.isMoving()) {
-      terminados = true;
+    // Si terminó de moverse y no estamos en pausa, verificamos si llegó al destino real
+    if (!isPaused && !s.isMoving()) {
+      // Si el ángulo actual es el objetivo (o muy cerca), salimos del bucle principal
+      if (abs(s.getCurrentAngle() - target) <= 1) break;
     }
   }
 }
@@ -108,7 +94,6 @@ void setup() {
   pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
 
   delay(100);
-
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
     Serial.println(">>> AVISO: El interruptor de PAUSA esta CERRADO.");
   }
@@ -118,22 +103,36 @@ void setup() {
 }
 
 void ejecutarSecuencia() {
-  Serial.println("Iniciando secuencia...");
+  Serial.println("Iniciando secuencia SECUENCIAL...");
 
-  // PASO 1: HOME (90)
-  moverServos(90, 90, 90, 90, 90);
+  // -------- SECUENCIA 1: IR A HOME (90) --------
+  // Orden original: 1, 2, 3, 4, 5
+  moverUnServo(SERVO1, 90);
+  moverUnServo(SERVO2, 90);
+  moverUnServo(SERVO3, 90);
+  moverUnServo(SERVO4, 90);
+  moverUnServo(SERVO5, 90);
   esperarPausaYDelay(espera);
 
-  // PASO 2: TRABAJO
-  moverServos(60, 125, 55, 125, 45);
+  // -------- SECUENCIA 2: IR A TRABAJO (Orden original exacto: 1, 4, 3, 2, 5) --------
+  moverUnServo(SERVO1, 60);
+  moverUnServo(SERVO4, 125);
+  moverUnServo(SERVO3, 55);
+  moverUnServo(SERVO2, 125);
+  moverUnServo(SERVO5, 45);
   esperarPausaYDelay(espera);
 
-  // PASO 3
-  moverServos(SERVO1.getCurrentAngle(), 80, SERVO3.getCurrentAngle(), 90, SERVO5.getCurrentAngle());
+  // PARTE 2: 2(80), luego 4(90)
+  moverUnServo(SERVO2, 80);
+  moverUnServo(SERVO4, 90);
   esperarPausaYDelay(espera);
 
-  // PASO 4
-  moverServos(90, 95, 90, 60, 90);
+  // PARTE 3: 1(90), 2(95), 3(90), 4(60), 5(90)
+  moverUnServo(SERVO1, 90);
+  moverUnServo(SERVO2, 95);
+  moverUnServo(SERVO3, 90);
+  moverUnServo(SERVO4, 60);
+  moverUnServo(SERVO5, 90);
   esperarPausaYDelay(espera);
 
   Serial.println("Secuencia finalizada.");
