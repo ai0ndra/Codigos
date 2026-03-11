@@ -18,6 +18,9 @@ bool firstPress = true;
 int lastStartState = HIGH;
 bool isPaused = false;
 
+// Variables para guardar los objetivos actuales (para poder reanudar)
+int t1, t2, t3, t4, t5;
+
 // Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
@@ -28,16 +31,21 @@ void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   }
 }
 
-// Verifica el interruptor de pausa (Lógica simplificada para máxima compatibilidad)
+// Verifica el interruptor de pausa y detiene el movimiento FISICAMENTE de inmediato
 void verificarBotonPausa() {
-  // Mientras el interruptor esté en PAUSA (LOW)
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
     if (!isPaused) {
       Serial.println("PAUSA ACTIVADA.");
+      // Intentar frenar los servos de inmediato
+      SERVO1.stop();
+      SERVO2.stop();
+      SERVO3.stop();
+      SERVO4.stop();
+      SERVO5.stop();
       isPaused = true;
     }
 
-    // Mientras el interruptor siga cerrado, bloqueamos aquí
+    // Bloqueo total mientras el interruptor esté cerrado
     while (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
       delay(50);
     }
@@ -45,18 +53,45 @@ void verificarBotonPausa() {
     if (isPaused) {
       Serial.println("REANUDANDO...");
       isPaused = false;
+      // Al salir, la función que llamó a verificarBotonPausa volverá a lanzar los objetivos
     }
   }
 }
 
-// Función para esperar a que termine el movimiento sin bloquear el interruptor de pausa
-void esperarMovimientoConPausa() {
-  while (SERVO1.isMoving() || SERVO2.isMoving() ||
-         SERVO3.isMoving() || SERVO4.isMoving() ||
-         SERVO5.isMoving()) {
+// Función para mover servos con detección de pausa inmediata
+void moverServos(int a1, int a2, int a3, int a4, int a5) {
+  // Guardamos los objetivos por si hay que reanudar
+  t1 = a1; t2 = a2; t3 = a3; t4 = a4; t5 = a5;
 
-    verificarBotonPausa();
-    delay(10);
+  bool terminados = false;
+  while (!terminados) {
+    // Lanzar movimiento
+    SERVO1.setEaseTo(t1, velocidad);
+    SERVO2.setEaseTo(t2, velocidad);
+    SERVO3.setEaseTo(t3, velocidad);
+    SERVO4.setEaseTo(t4, velocidad);
+    SERVO5.setEaseTo(t5, velocidad);
+
+    // Iniciar sincronizado (usando llamada global para compatibilidad)
+    synchronizeAllServosStart();
+
+    // Esperar a que terminen, vigilando el interruptor de pausa
+    while (SERVO1.isMoving() || SERVO2.isMoving() ||
+           SERVO3.isMoving() || SERVO4.isMoving() ||
+           SERVO5.isMoving()) {
+
+      if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
+        verificarBotonPausa();
+        // Si hubo una pausa, rompemos este bucle interno para relanzar los objetivos al reanudar
+        break;
+      }
+      delay(10);
+    }
+
+    // Si no estamos en pausa y ya no se mueven, hemos terminado este paso
+    if (!isPaused && !SERVO1.isMoving() && !SERVO2.isMoving() && !SERVO3.isMoving() && !SERVO4.isMoving() && !SERVO5.isMoving()) {
+      terminados = true;
+    }
   }
 }
 
@@ -88,39 +123,21 @@ void setup() {
 void ejecutarSecuencia() {
   Serial.println("Iniciando secuencia...");
 
-  // PASO 1
-  SERVO1.easeTo(90, velocidad);
-  SERVO2.easeTo(90, velocidad);
-  SERVO3.easeTo(90, velocidad);
-  SERVO4.easeTo(90, velocidad);
-  SERVO5.easeTo(90, velocidad);
-  esperarMovimientoConPausa();
+  // PASO 1: HOME (90)
+  moverServos(90, 90, 90, 90, 90);
   esperarPausaYDelay(espera);
 
-  // PASO 2
-  SERVO1.easeTo(60, velocidad);
-  SERVO4.easeTo(125, velocidad);
-  SERVO3.easeTo(55, velocidad);
-  SERVO2.easeTo(125, velocidad);
-  SERVO5.easeTo(45, velocidad);
-  esperarMovimientoConPausa();
+  // PASO 2: TRABAJO
+  moverServos(60, 125, 55, 125, 45);
   esperarPausaYDelay(espera);
 
   // PASO 3
-  SERVO2.easeTo(80, velocidad);
-  SERVO4.easeTo(90, velocidad);
-  esperarMovimientoConPausa();
+  moverServos(SERVO1.getCurrentAngle(), 80, SERVO3.getCurrentAngle(), 90, SERVO5.getCurrentAngle());
   esperarPausaYDelay(espera);
 
-  // PASO 4 (ULTIMO PASO)
-  SERVO1.easeTo(90, velocidad);
-  SERVO2.easeTo(95, velocidad);
-  SERVO3.easeTo(90, velocidad);
-  SERVO4.easeTo(60, velocidad);
-  SERVO5.easeTo(90, velocidad);
-  esperarMovimientoConPausa();
-
-  // ELIMINADO: esperarPausaYDelay(espera) para que termine de inmediato
+  // PASO 4
+  moverServos(90, 95, 90, 60, 90);
+  esperarPausaYDelay(espera);
 
   Serial.println("Secuencia finalizada.");
 }
@@ -151,7 +168,7 @@ void loop() {
         SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
         firstPress = false;
-        // ELIMINADO: esperarPausaYDelay(espera) para que empiece de inmediato
+        esperarPausaYDelay(espera);
       }
 
       ejecutarSecuencia();
