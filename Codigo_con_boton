@@ -21,6 +21,9 @@ bool isPaused = false;
 // Verifica el interruptor de pausa y detiene el movimiento FISICAMENTE de inmediato
 void verificarBotonPausa() {
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
+    delay(100); // Filtro de ruido (Debounce fuerte) para evitar paradas falsas
+    if (digitalRead(PAUSE_SWITCH_PIN) == HIGH) return; // Fue solo un pico de ruido
+
     if (!isPaused) {
       Serial.println("PAUSA ACTIVADA.");
       SERVO1.stop();
@@ -44,34 +47,32 @@ void verificarBotonPausa() {
 }
 
 // Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
-// Ahora es sensible al botón de pausa
 void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
   for (int p = 45; p <= destino; p++) {
-    // Si se activa la pausa durante el homing inicial, esperamos
     verificarBotonPausa();
-
     servo.write(p);
     delay(40);
   }
 }
 
 // Función para mover UN SOLO SERVO de forma secuencial y con detección de pausa REANUDABLE
-void moverUnServo(ServoEasing &s, int target) {
+void moverUnServo(ServoEasing &s, int target, const char* name) {
+  Serial.print("Moviendo "); Serial.print(name); Serial.print(" a "); Serial.println(target);
+
   // Mientras el servo no haya llegado a su destino
   while (abs(s.getCurrentAngle() - target) > 1) {
 
-    // Si estamos pausados al entrar, esperamos aquí
     verificarBotonPausa();
 
     // Iniciar o continuar movimiento hacia el objetivo
     s.startEaseTo(target, velocidad);
+    delay(50); // Pequeña espera para que la librería registre el inicio del movimiento
 
     // Mientras se esté moviendo hacia el objetivo
     while (s.isMoving()) {
       if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
         verificarBotonPausa();
-        // Si pausamos, salimos de este bucle interno para re-evaluar la posición al reanudar
         break;
       }
       delay(10);
@@ -82,6 +83,7 @@ void moverUnServo(ServoEasing &s, int target) {
       if (abs(s.getCurrentAngle() - target) <= 1) break;
     }
   }
+  Serial.print(name); Serial.println(" llego a su destino.");
 }
 
 // Función para esperar un tiempo (delay) sin bloquear el interruptor de pausa
@@ -99,50 +101,50 @@ void setup() {
   pinMode(START_BUTTON_PIN, INPUT_PULLUP);
   pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
 
-  delay(100);
+  delay(200);
+  Serial.println("\n--- SISTEMA REINICIADO ---"); // Ayuda a detectar brownouts
+
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
     Serial.println(">>> AVISO: El interruptor de PAUSA esta CERRADO.");
   }
 
   lastStartState = digitalRead(START_BUTTON_PIN);
-  Serial.println("Brazo Robot Listo.");
+  Serial.println("Brazo Robot Listo para operar.");
 }
 
 void ejecutarSecuencia() {
-  Serial.println("Iniciando secuencia SECUENCIAL...");
+  Serial.println("Iniciando secuencia de trabajo...");
 
   // -------- SECUENCIA 1: IR A HOME (90) --------
-  // Orden original: 1, 2, 3, 4, 5
-  moverUnServo(SERVO1, 90);
-  moverUnServo(SERVO2, 90);
-  moverUnServo(SERVO3, 90);
-  moverUnServo(SERVO4, 90);
-  moverUnServo(SERVO5, 90);
+  moverUnServo(SERVO1, 90, "SERVO 1");
+  moverUnServo(SERVO2, 90, "SERVO 2");
+  moverUnServo(SERVO3, 90, "SERVO 3");
+  moverUnServo(SERVO4, 90, "SERVO 4");
+  moverUnServo(SERVO5, 90, "SERVO 5");
   esperarPausaYDelay(espera);
 
   // -------- SECUENCIA 2: IR A TRABAJO (Orden: 1, 4, 3, 2, 5) --------
-  // Muy importante: Servo 4 se mueve ANTES que Servo 2 aquí.
-  moverUnServo(SERVO1, 60);
-  moverUnServo(SERVO4, 125);
-  moverUnServo(SERVO3, 55);
-  moverUnServo(SERVO2, 125);
-  moverUnServo(SERVO5, 45);
+  moverUnServo(SERVO1, 60, "SERVO 1");
+  moverUnServo(SERVO4, 125, "SERVO 4");
+  moverUnServo(SERVO3, 55, "SERVO 3");
+  moverUnServo(SERVO2, 125, "SERVO 2");
+  moverUnServo(SERVO5, 45, "SERVO 5");
   esperarPausaYDelay(espera);
 
   // PARTE 2: 2(80), luego 4(90)
-  moverUnServo(SERVO2, 80);
-  moverUnServo(SERVO4, 90);
+  moverUnServo(SERVO2, 80, "SERVO 2");
+  moverUnServo(SERVO4, 90, "SERVO 4");
   esperarPausaYDelay(espera);
 
   // PARTE 3: 1(90), 2(95), 3(90), 4(60), 5(90)
-  moverUnServo(SERVO1, 90);
-  moverUnServo(SERVO2, 95);
-  moverUnServo(SERVO3, 90);
-  moverUnServo(SERVO4, 60);
-  moverUnServo(SERVO5, 90);
+  moverUnServo(SERVO1, 90, "SERVO 1");
+  moverUnServo(SERVO2, 95, "SERVO 2");
+  moverUnServo(SERVO3, 90, "SERVO 3");
+  moverUnServo(SERVO4, 60, "SERVO 4");
+  moverUnServo(SERVO5, 90, "SERVO 5");
   esperarPausaYDelay(espera);
 
-  Serial.println("Secuencia finalizada.");
+  Serial.println(">>> SECUENCIA FINALIZADA CON EXITO <<<");
 }
 
 void loop() {
