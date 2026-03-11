@@ -65,15 +65,12 @@ void moverServos(int a1, int a2, int a3, int a4, int a5) {
 
   bool terminados = false;
   while (!terminados) {
-    // Lanzar movimiento
-    SERVO1.setEaseTo(t1, velocidad);
-    SERVO2.setEaseTo(t2, velocidad);
-    SERVO3.setEaseTo(t3, velocidad);
-    SERVO4.setEaseTo(t4, velocidad);
-    SERVO5.setEaseTo(t5, velocidad);
-
-    // Iniciar sincronizado (usando llamada global para compatibilidad)
-    synchronizeAllServosStart();
+    // Lanzar movimiento de forma individual para evitar errores de sincronización de la librería
+    SERVO1.startEaseTo(t1, velocidad);
+    SERVO2.startEaseTo(t2, velocidad);
+    SERVO3.startEaseTo(t3, velocidad);
+    SERVO4.startEaseTo(t4, velocidad);
+    SERVO5.startEaseTo(t5, velocidad);
 
     // Esperar a que terminen, vigilando el interruptor de pausa
     while (SERVO1.isMoving() || SERVO2.isMoving() ||
