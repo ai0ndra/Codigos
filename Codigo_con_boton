@@ -18,15 +18,6 @@ bool firstPress = true;
 int lastStartState = HIGH;
 bool isPaused = false;
 
-// Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
-void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
-  servo.attach(pin);
-  for (int p = 45; p <= destino; p++) {
-    servo.write(p);
-    delay(40);
-  }
-}
-
 // Verifica el interruptor de pausa y detiene el movimiento FISICAMENTE de inmediato
 void verificarBotonPausa() {
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
@@ -40,7 +31,7 @@ void verificarBotonPausa() {
       isPaused = true;
     }
 
-    // Mientras el interruptor siga cerrado, bloqueamos aquí
+    // Bloqueo total mientras el interruptor esté cerrado (LOW)
     while (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
       delay(50);
     }
@@ -52,10 +43,26 @@ void verificarBotonPausa() {
   }
 }
 
+// Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
+// Ahora es sensible al botón de pausa
+void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
+  servo.attach(pin);
+  for (int p = 45; p <= destino; p++) {
+    // Si se activa la pausa durante el homing inicial, esperamos
+    verificarBotonPausa();
+
+    servo.write(p);
+    delay(40);
+  }
+}
+
 // Función para mover UN SOLO SERVO de forma secuencial y con detección de pausa REANUDABLE
 void moverUnServo(ServoEasing &s, int target) {
   // Mientras el servo no haya llegado a su destino
-  while (s.getCurrentAngle() != target) {
+  while (abs(s.getCurrentAngle() - target) > 1) {
+
+    // Si estamos pausados al entrar, esperamos aquí
+    verificarBotonPausa();
 
     // Iniciar o continuar movimiento hacia el objetivo
     s.startEaseTo(target, velocidad);
@@ -72,7 +79,6 @@ void moverUnServo(ServoEasing &s, int target) {
 
     // Si terminó de moverse y no estamos en pausa, verificamos si llegó al destino real
     if (!isPaused && !s.isMoving()) {
-      // Si el ángulo actual es el objetivo (o muy cerca), salimos del bucle principal
       if (abs(s.getCurrentAngle() - target) <= 1) break;
     }
   }
@@ -114,7 +120,8 @@ void ejecutarSecuencia() {
   moverUnServo(SERVO5, 90);
   esperarPausaYDelay(espera);
 
-  // -------- SECUENCIA 2: IR A TRABAJO (Orden original exacto: 1, 4, 3, 2, 5) --------
+  // -------- SECUENCIA 2: IR A TRABAJO (Orden: 1, 4, 3, 2, 5) --------
+  // Muy importante: Servo 4 se mueve ANTES que Servo 2 aquí.
   moverUnServo(SERVO1, 60);
   moverUnServo(SERVO4, 125);
   moverUnServo(SERVO3, 55);
@@ -139,6 +146,7 @@ void ejecutarSecuencia() {
 }
 
 void loop() {
+  // Vigilancia constante del interruptor
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
     verificarBotonPausa();
     return;
@@ -146,9 +154,12 @@ void loop() {
 
   int currentStartState = digitalRead(START_BUTTON_PIN);
 
+  // Detectar pulsación de INICIO (HIGH a LOW)
   if (currentStartState == LOW && lastStartState == HIGH) {
     delay(50);
     if (digitalRead(START_BUTTON_PIN) == LOW) {
+
+      // PRIMER INICIO: Homing secuencial lento
       if (firstPress) {
         Serial.println("Realizando Homing de seguridad...");
         alcanzarHomeConPasos(SERVO1, 23, 90);
@@ -167,7 +178,9 @@ void loop() {
         esperarPausaYDelay(espera);
       }
 
+      // Ejecutar la secuencia principal en el orden correcto
       ejecutarSecuencia();
+
       currentStartState = digitalRead(START_BUTTON_PIN);
     }
   }
