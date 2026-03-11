@@ -31,23 +31,26 @@ void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
 // Verifica el interruptor de pausa (Lógica simplificada para máxima compatibilidad)
 void verificarBotonPausa() {
   // Mientras el interruptor esté en PAUSA (LOW)
-  while (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
+  if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
     if (!isPaused) {
       Serial.println("PAUSA ACTIVADA.");
       isPaused = true;
     }
-    delay(50);
-  }
 
-  if (isPaused) {
-    Serial.println("REANUDANDO...");
-    isPaused = false;
+    // Mientras el interruptor siga cerrado, bloqueamos aquí
+    while (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
+      delay(50);
+    }
+
+    if (isPaused) {
+      Serial.println("REANUDANDO...");
+      isPaused = false;
+    }
   }
 }
 
 // Función para esperar a que termine el movimiento sin bloquear el interruptor de pausa
 void esperarMovimientoConPausa() {
-  // Usamos isMoving() que es el método más estándar en la librería
   while (SERVO1.isMoving() || SERVO2.isMoving() ||
          SERVO3.isMoving() || SERVO4.isMoving() ||
          SERVO5.isMoving()) {
@@ -109,14 +112,15 @@ void ejecutarSecuencia() {
   esperarMovimientoConPausa();
   esperarPausaYDelay(espera);
 
-  // PASO 4
+  // PASO 4 (ULTIMO PASO)
   SERVO1.easeTo(90, velocidad);
   SERVO2.easeTo(95, velocidad);
   SERVO3.easeTo(90, velocidad);
   SERVO4.easeTo(60, velocidad);
   SERVO5.easeTo(90, velocidad);
   esperarMovimientoConPausa();
-  esperarPausaYDelay(espera);
+
+  // ELIMINADO: esperarPausaYDelay(espera) para que termine de inmediato
 
   Serial.println("Secuencia finalizada.");
 }
@@ -147,7 +151,7 @@ void loop() {
         SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
 
         firstPress = false;
-        esperarPausaYDelay(espera);
+        // ELIMINADO: esperarPausaYDelay(espera) para que empiece de inmediato
       }
 
       ejecutarSecuencia();
