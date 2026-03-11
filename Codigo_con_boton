@@ -81,14 +81,23 @@ void setup() {
   pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
 
   delay(100);
+
+  // Mensaje inicial de diagnóstico para el interruptor
+  if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
+    Serial.println(">>> AVISO: El interruptor de PAUSA esta CERRADO (LOW).");
+    Serial.println(">>> Abre el interruptor para permitir el movimiento.");
+  } else {
+    Serial.println(">>> Interruptor de PAUSA Abierto (OK).");
+  }
+
   lastStartState = digitalRead(START_BUTTON_PIN);
 
   Serial.println("Brazo Robot Listo.");
-  Serial.println("D19: Boton Inicio | D21: Interruptor Pausa (Sostenido)");
+  Serial.println("Pin D19: Boton Inicio | Pin D21: Interruptor Pausa (Sostenido)");
 }
 
 void ejecutarSecuencia() {
-  Serial.println("Iniciando secuencia...");
+  Serial.println("Iniciando secuencia de trabajo...");
 
   // -------- SECUENCIA 1: IR A HOME (90) --------
   SERVO1.setEaseTo(90, velocidad);
@@ -133,10 +142,10 @@ void ejecutarSecuencia() {
 }
 
 void loop() {
-  // Si el interruptor de pausa está activado, no permitimos iniciar la secuencia
+  // Si el interruptor de pausa está activado, bloqueamos todo aquí
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
     verificarBotonPausa();
-    return;
+    return; // No permitimos leer el botón de inicio si está pausado
   }
 
   int currentStartState = digitalRead(START_BUTTON_PIN);
@@ -146,6 +155,7 @@ void loop() {
     delay(50);
     if (digitalRead(START_BUTTON_PIN) == LOW) {
 
+      // La primera vez hace el Homing de seguridad
       if (firstPress) {
         Serial.println("Realizando Homing de seguridad...");
         alcanzarHomeConPasos(SERVO1, 23, 90);
@@ -169,7 +179,10 @@ void loop() {
         esperarPausaYDelay(espera);
       }
 
+      // Ejecutar la secuencia de trabajo
       ejecutarSecuencia();
+
+      // Actualizar el estado para no repetir por error
       currentStartState = digitalRead(START_BUTTON_PIN);
     }
   }
