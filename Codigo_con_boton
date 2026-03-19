@@ -21,11 +21,11 @@ bool isPaused = false;
 // Verifica el interruptor de pausa y detiene el movimiento FISICAMENTE de inmediato
 void verificarBotonPausa() {
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
-    delay(100); // Filtro de ruido (Debounce fuerte) para evitar paradas falsas
-    if (digitalRead(PAUSE_SWITCH_PIN) == HIGH) return; // Fue solo un pico de ruido
+    delay(100); // Filtro de ruido fuerte
+    if (digitalRead(PAUSE_SWITCH_PIN) == HIGH) return;
 
     if (!isPaused) {
-      Serial.println("PAUSA ACTIVADA.");
+      Serial.println(">>> PAUSA ACTIVADA por hardware (D21 LOW) <<<");
       SERVO1.stop();
       SERVO2.stop();
       SERVO3.stop();
@@ -34,13 +34,12 @@ void verificarBotonPausa() {
       isPaused = true;
     }
 
-    // Bloqueo total mientras el interruptor esté cerrado (LOW)
     while (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
       delay(50);
     }
 
     if (isPaused) {
-      Serial.println("REANUDANDO...");
+      Serial.println(">>> REANUDANDO (D21 HIGH) <<<");
       isPaused = false;
     }
   }
@@ -58,32 +57,35 @@ void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
 
 // Función para mover UN SOLO SERVO de forma secuencial y con detección de pausa REANUDABLE
 void moverUnServo(ServoEasing &s, int target, const char* name) {
-  Serial.print("Moviendo "); Serial.print(name); Serial.print(" a "); Serial.println(target);
+  Serial.print("Comenzando: "); Serial.print(name); Serial.print(" hacia "); Serial.println(target);
 
-  // Mientras el servo no haya llegado a su destino
-  while (abs(s.getCurrentAngle() - target) > 1) {
+  bool llegado = false;
+  while (!llegado) {
 
+    // Si estamos en pausa, esperamos antes de dar la orden de movimiento
     verificarBotonPausa();
 
-    // Iniciar o continuar movimiento hacia el objetivo
+    // Dar la orden de movimiento una sola vez o al reanudar
     s.startEaseTo(target, velocidad);
-    delay(50); // Pequeña espera para que la librería registre el inicio del movimiento
+    delay(50); // Estabilización
 
-    // Mientras se esté moviendo hacia el objetivo
+    // Mientras se mueva, vigilamos la pausa
     while (s.isMoving()) {
       if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
         verificarBotonPausa();
+        // Al salir de verificarBotonPausa (cuando abren el switch),
+        // salimos de este while(isMoving) para relanzar la orden s.startEaseTo
         break;
       }
       delay(10);
     }
 
-    // Si terminó de moverse y no estamos en pausa, verificamos si llegó al destino real
+    // Si terminó de moverse y no estamos pausados, verificamos si llegó
     if (!isPaused && !s.isMoving()) {
-      if (abs(s.getCurrentAngle() - target) <= 1) break;
+      Serial.print("Finalizado: "); Serial.println(name);
+      llegado = true;
     }
   }
-  Serial.print(name); Serial.println(" llego a su destino.");
 }
 
 // Función para esperar un tiempo (delay) sin bloquear el interruptor de pausa
@@ -102,53 +104,52 @@ void setup() {
   pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
 
   delay(200);
-  Serial.println("\n--- SISTEMA REINICIADO ---"); // Ayuda a detectar brownouts
+  Serial.println("\n--- SISTEMA REINICIADO ---");
 
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
-    Serial.println(">>> AVISO: El interruptor de PAUSA esta CERRADO.");
+    Serial.println("AVISO: El interruptor de PAUSA esta detectado como CERRADO.");
   }
 
   lastStartState = digitalRead(START_BUTTON_PIN);
-  Serial.println("Brazo Robot Listo para operar.");
 }
 
 void ejecutarSecuencia() {
-  Serial.println("Iniciando secuencia de trabajo...");
+  Serial.println("--- INICIANDO SECUENCIA ---");
 
   // -------- SECUENCIA 1: IR A HOME (90) --------
-  moverUnServo(SERVO1, 90, "SERVO 1");
-  moverUnServo(SERVO2, 90, "SERVO 2");
-  moverUnServo(SERVO3, 90, "SERVO 3");
-  moverUnServo(SERVO4, 90, "SERVO 4");
-  moverUnServo(SERVO5, 90, "SERVO 5");
+  moverUnServo(SERVO1, 90, "Joint 1");
+  moverUnServo(SERVO2, 90, "Joint 2");
+  moverUnServo(SERVO3, 90, "Joint 3");
+  moverUnServo(SERVO4, 90, "Joint 4");
+  moverUnServo(SERVO5, 90, "Joint 5");
   esperarPausaYDelay(espera);
 
-  // -------- SECUENCIA 2: IR A TRABAJO (Orden: 1, 4, 3, 2, 5) --------
-  moverUnServo(SERVO1, 60, "SERVO 1");
-  moverUnServo(SERVO4, 125, "SERVO 4");
-  moverUnServo(SERVO3, 55, "SERVO 3");
-  moverUnServo(SERVO2, 125, "SERVO 2");
-  moverUnServo(SERVO5, 45, "SERVO 5");
+  // -------- SECUENCIA 2: TRABAJO (Orden: 1, 4, 3, 2, 5) --------
+  moverUnServo(SERVO1, 60, "Joint 1");
+  moverUnServo(SERVO4, 125, "Joint 4");
+  moverUnServo(SERVO3, 55, "Joint 3");
+  moverUnServo(SERVO2, 125, "Joint 2");
+  moverUnServo(SERVO5, 45, "Joint 5");
   esperarPausaYDelay(espera);
 
   // PARTE 2: 2(80), luego 4(90)
-  moverUnServo(SERVO2, 80, "SERVO 2");
-  moverUnServo(SERVO4, 90, "SERVO 4");
+  moverUnServo(SERVO2, 80, "Joint 2");
+  moverUnServo(SERVO4, 90, "Joint 4");
   esperarPausaYDelay(espera);
 
   // PARTE 3: 1(90), 2(95), 3(90), 4(60), 5(90)
-  moverUnServo(SERVO1, 90, "SERVO 1");
-  moverUnServo(SERVO2, 95, "SERVO 2");
-  moverUnServo(SERVO3, 90, "SERVO 3");
-  moverUnServo(SERVO4, 60, "SERVO 4");
-  moverUnServo(SERVO5, 90, "SERVO 5");
+  moverUnServo(SERVO1, 90, "Joint 1");
+  moverUnServo(SERVO2, 95, "Joint 2");
+  moverUnServo(SERVO3, 90, "Joint 3");
+  moverUnServo(SERVO4, 60, "Joint 4");
+  moverUnServo(SERVO5, 90, "Joint 5");
   esperarPausaYDelay(espera);
 
-  Serial.println(">>> SECUENCIA FINALIZADA CON EXITO <<<");
+  Serial.println("--- SECUENCIA COMPLETADA ---");
 }
 
 void loop() {
-  // Vigilancia constante del interruptor
+  // Si el interruptor de pausa está activado, bloqueamos el inicio
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
     verificarBotonPausa();
     return;
@@ -161,9 +162,8 @@ void loop() {
     delay(50);
     if (digitalRead(START_BUTTON_PIN) == LOW) {
 
-      // PRIMER INICIO: Homing secuencial lento
       if (firstPress) {
-        Serial.println("Realizando Homing de seguridad...");
+        Serial.println("Homing Inicial de Seguridad...");
         alcanzarHomeConPasos(SERVO1, 23, 90);
         alcanzarHomeConPasos(SERVO2, 33, 90);
         alcanzarHomeConPasos(SERVO3, 32, 90);
@@ -180,10 +180,11 @@ void loop() {
         esperarPausaYDelay(espera);
       }
 
-      // Ejecutar la secuencia principal en el orden correcto
       ejecutarSecuencia();
 
+      // Resetear estado del botón para el siguiente ciclo
       currentStartState = digitalRead(START_BUTTON_PIN);
+      Serial.println("Listo. Esperando nuevo pulso en D19...");
     }
   }
 
