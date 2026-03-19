@@ -18,7 +18,7 @@ bool firstPress = true;
 int lastStartState = HIGH;
 bool isPaused = false;
 
-// Esta variable se guarda en la memoria RTC y sobrevive a reinicios suaves
+// Esta variable se guarda en la memoria RTC y sobrevive a reinicios suaves (BROWN-OUT)
 RTC_DATA_ATTR int resetCount = 0;
 
 // Verifica el interruptor de pausa y detiene el movimiento FISICAMENTE de inmediato
@@ -50,13 +50,15 @@ void verificarBotonPausa() {
 }
 
 // Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
-void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
+void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino, const char* name) {
+  Serial.print("Homing "); Serial.println(name);
   servo.attach(pin);
   for (int p = 45; p <= destino; p++) {
     verificarBotonPausa();
     servo.write(p);
     delay(40);
   }
+  delay(200); // Pequeña pausa entre servos para evitar picos de corriente
 }
 
 // Función para mover UN SOLO SERVO de forma secuencial y con detección de pausa REANUDABLE
@@ -101,16 +103,22 @@ void esperarPausaYDelay(int ms) {
 void setup() {
   Serial.begin(115200);
 
+  // Pequeña espera al arrancar para que la energía se estabilice
+  delay(1000);
+
   pinMode(START_BUTTON_PIN, INPUT_PULLUP);
   pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
 
-  delay(500);
-
   resetCount++; // Aumentar el contador de reinicios
 
-  Serial.println("\n*********************************************");
+  Serial.println("\n#############################################");
   Serial.print("--- SISTEMA INICIADO - Reset #"); Serial.print(resetCount); Serial.println(" ---");
-  Serial.println("*********************************************");
+  if (resetCount > 1) {
+    Serial.println("ALERTA: El ESP32 se ha reiniciado solo.");
+    Serial.println("Esto significa que los motores estan consumiendo demasiada energia.");
+    Serial.println("Revisa tu bateria o fuente de alimentacion.");
+  }
+  Serial.println("#############################################\n");
 
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
     Serial.println("AVISO: El interruptor de PAUSA esta detectado como CERRADO.");
@@ -132,7 +140,6 @@ void ejecutarSecuencia() {
   esperarPausaYDelay(espera);
 
   // -------- SECUENCIA 2: TRABAJO (Orden: 1, 4, 3, 2, 5) --------
-  // Muy importante: Servo 4 se mueve ANTES que Servo 2 según pedido.
   moverUnServo(SERVO1, 60, "Joint 1");
   moverUnServo(SERVO4, 125, "Joint 4");
   moverUnServo(SERVO3, 55, "Joint 3");
@@ -167,17 +174,17 @@ void loop() {
 
   // Detectar pulsación de INICIO (HIGH a LOW)
   if (currentStartState == LOW && lastStartState == HIGH) {
-    delay(100); // Debounce fuerte para el botón de inicio
+    delay(200); // Debounce fuerte para el botón de inicio (200ms)
     if (digitalRead(START_BUTTON_PIN) == LOW) {
 
       // PRIMER INICIO: Homing secuencial lento
       if (firstPress) {
         Serial.println("\n[!] Realizando Homing inicial de seguridad...");
-        alcanzarHomeConPasos(SERVO1, 23, 90);
-        alcanzarHomeConPasos(SERVO2, 33, 90);
-        alcanzarHomeConPasos(SERVO3, 32, 90);
-        alcanzarHomeConPasos(SERVO4, 25, 90);
-        alcanzarHomeConPasos(SERVO5, 22, 90);
+        alcanzarHomeConPasos(SERVO1, 23, 90, "Servo 1");
+        alcanzarHomeConPasos(SERVO2, 33, 90, "Servo 2");
+        alcanzarHomeConPasos(SERVO3, 32, 90, "Servo 3");
+        alcanzarHomeConPasos(SERVO4, 25, 90, "Servo 4");
+        alcanzarHomeConPasos(SERVO5, 22, 90, "Servo 5");
 
         SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
         SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
