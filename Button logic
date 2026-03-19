@@ -3,6 +3,10 @@
 // Variable para detectar reinicios en el Monitor Serial (ESP32)
 RTC_DATA_ATTR int restartCount = 0;
 
+// Estados del sistema
+enum State { READY, MOVING, PAUSED };
+State currentState = READY;
+
 ServoEasing SERVO1;
 ServoEasing SERVO2;
 ServoEasing SERVO3;
@@ -21,37 +25,54 @@ bool firstPress = true;
 int lastStartState = HIGH;
 bool isPaused = false;
 
-// Verifica el interruptor de pausa con filtrado de ruido (Debounce) mejorado
+// Verifica el interruptor de pausa y el botón de inicio como reanudación
 void verificarBotonPausa() {
+  // 1. Detección del interruptor de PAUSA (Pin 21)
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
-    // Confirmamos que la señal se mantiene LOW (Pausa activada) durante 150ms
-    // Esto evita que el ruido eléctrico de los motores active la pausa por error.
-    unsigned long t_deteccion = millis();
-    while (millis() - t_deteccion < 150) {
-      if (digitalRead(PAUSE_SWITCH_PIN) == HIGH) return; // Falsa alarma (ruido)
-      delay(5);
-    }
-
     if (!isPaused) {
-      Serial.println("!! PAUSA ACTIVADA (Interruptor D21 detectado) !!");
-      SERVO1.stop();
-      SERVO2.stop();
-      SERVO3.stop();
-      SERVO4.stop();
-      SERVO5.stop();
+      Serial.println("!! PAUSA POR INTERRUPTOR (Pin 21) !!");
+      detenerTodo();
       isPaused = true;
+      currentState = PAUSED;
     }
 
-    // Mientras el interruptor siga en LOW, nos quedamos aquí bloqueados
+    // Bloqueo mientras el interruptor de pausa esté cerrado
     while (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
       delay(50);
     }
+  }
 
-    if (isPaused) {
-      Serial.println(">> REANUDANDO MOVIMIENTO...");
-      isPaused = false;
+  // 2. Lógica de Reanudación (Si estamos pausados, esperamos a que se abra el interruptor O se pulse START)
+  if (isPaused) {
+    // Si el interruptor ya está abierto (HIGH), podemos reanudar con el botón START
+    if (digitalRead(PAUSE_SWITCH_PIN) == HIGH) {
+      Serial.println("Esperando pulsacion de START para reanudar...");
+
+      while (isPaused) {
+        if (digitalRead(START_BUTTON_PIN) == LOW) {
+          delay(100); // Debounce
+          if (digitalRead(START_BUTTON_PIN) == LOW) {
+            Serial.println(">> REANUDANDO POR BOTON START...");
+            isPaused = false;
+            currentState = MOVING;
+            // Esperar a que suelte el botón para no disparar otro evento
+            while(digitalRead(START_BUTTON_PIN) == LOW) delay(10);
+          }
+        }
+        // Si vuelve a cerrar el interruptor de pausa mientras espera, volvemos al estado de bloqueo
+        if (digitalRead(PAUSE_SWITCH_PIN) == LOW) return;
+        delay(20);
+      }
     }
   }
+}
+
+void detenerTodo() {
+  SERVO1.stop();
+  SERVO2.stop();
+  SERVO3.stop();
+  SERVO4.stop();
+  SERVO5.stop();
 }
 
 // Función para alcanzar la posición inicial usando "pasos" manuales (Seguridad)
@@ -70,43 +91,43 @@ void alcanzarHomeConPasos(ServoEasing &servo, int pin, int destino) {
 
 // Función para mover UN SOLO SERVO con detección de pausa y reintento automático
 void moverUnServo(ServoEasing &s, int target, const char* name) {
-  // Si ya estamos cerca del objetivo, no hacemos nada
-  if (abs(s.getCurrentAngle() - target) <= 1) {
-    Serial.print(name); Serial.println(" ya en posicion.");
-    return;
-  }
+  if (abs(s.getCurrentAngle() - target) <= 1) return;
 
-  Serial.print("Moviendo "); Serial.print(name); Serial.print(" -> "); Serial.println(target);
+  Serial.print("Ejecutando: "); Serial.print(name); Serial.print(" -> "); Serial.println(target);
   
-  // Iniciamos el movimiento
+  unsigned long startTime = millis();
   s.startEaseTo(target, velocidad);
-  delay(100); // Delay para que la librería inicialice el movimiento
+  delay(150);
 
-  // Bucle principal del servo: continúa hasta llegar al destino
   while (abs(s.getCurrentAngle() - target) > 1) {
+    verificarBotonPausa();
     
-    verificarBotonPausa(); // Verifica si el interruptor D21 está cerrado
-    
-    // Si el servo se detuvo pero no ha llegado (posible interrupción por pausa o error)
+    // Si el sistema se pausó y reanudó, debemos reiniciar el movimiento hacia el objetivo
     if (!s.isMoving() && !isPaused && abs(s.getCurrentAngle() - target) > 1) {
-      Serial.print("...re-activando "); Serial.println(name);
+      Serial.print("Re-iniciando trayectoria de "); Serial.println(name);
       s.startEaseTo(target, velocidad);
-      delay(100);
+      delay(150);
     }
     
-    // Mientras el servo se esté moviendo, monitoreamos el interruptor de pausa
+    // Monitoreo mientras se mueve
     while (s.isMoving()) {
+      // Si se detecta pausa durante el movimiento
       if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
         verificarBotonPausa();
-        break; // Salimos del bucle isMoving para que el código superior maneje la reanudación
+        break;
       }
-      delay(20);
+      delay(15);
+
+      // Safety Timeout (Evita que el código se cuelgue si un servo se traba)
+      if (millis() - startTime > 15000) { // 15 segundos max por movimiento
+         Serial.print("TIMEOUT en "); Serial.println(name);
+         break;
+      }
     }
-    
-    delay(20); // Pequeña espera de estabilidad
+    delay(15);
   }
-  Serial.print("OK: "); Serial.println(name);
-  delay(100); // Pausa entre servos para reducir picos de corriente
+  Serial.print("Completado: "); Serial.println(name);
+  delay(200); // Pausa de estabilizacion mecanica
 }
 
 // Función para esperar un tiempo (delay) sin bloquear el interruptor de pausa
@@ -125,18 +146,20 @@ void setup() {
   pinMode(START_BUTTON_PIN, INPUT_PULLUP);
   pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
   
-  delay(500);
+  delay(1000); // Espera extendida para estabilizar voltaje
   Serial.println("\n==========================================");
-  Serial.print("  SISTEMA INICIADO - Intento nro: ");
+  Serial.print("  BRAZO ROBOTICO - Arraque nro: ");
   Serial.println(restartCount);
   Serial.println("==========================================");
   
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
-    Serial.println(">>> AVISO: Interruptor de PAUSA detectado como ACTIVADO.");
+    Serial.println(">>> ESTADO INICIAL: PAUSA (Interruptor D21 Cerrado)");
+    isPaused = true;
+    currentState = PAUSED;
   }
 
   lastStartState = digitalRead(START_BUTTON_PIN);
-  Serial.println("Brazo Robot listo. Presione START para comenzar.");
+  Serial.println("Listo. Presione START (D19) para iniciar secuencia.");
 }
 
 void ejecutarSecuencia() {
@@ -175,23 +198,21 @@ void ejecutarSecuencia() {
 }
 
 void loop() {
-  // Vigilancia constante del interruptor de pausa
-  if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
-    verificarBotonPausa();
-    return;
-  }
+  // 1. Monitoreo constante de la pausa
+  verificarBotonPausa();
 
+  // 2. Lógica del botón START (Inicio de secuencia)
   int currentStartState = digitalRead(START_BUTTON_PIN);
 
-  // Detectar pulsación de INICIO (Transición de HIGH a LOW)
-  if (currentStartState == LOW && lastStartState == HIGH) {
-    // Debounce fuerte para evitar disparos por ruido eléctrico (100ms)
+  // Solo iniciamos si no estamos pausados y detectamos flanco de bajada (NO button)
+  if (currentState == READY && currentStartState == LOW && lastStartState == HIGH) {
     delay(100);
     if (digitalRead(START_BUTTON_PIN) == LOW) {
       
-      // PRIMER INICIO: Homing secuencial lento
+      currentState = MOVING;
+
       if (firstPress) {
-        Serial.println("\n--- Iniciando Homing de Seguridad ---");
+        Serial.println("\n[1/2] Realizando calibracion inicial...");
         alcanzarHomeConPasos(SERVO1, 23, 90);
         alcanzarHomeConPasos(SERVO2, 33, 90);
         alcanzarHomeConPasos(SERVO3, 32, 90);
@@ -208,18 +229,18 @@ void loop() {
         esperarPausaYDelay(espera);
       }
 
-      // Ejecutar la secuencia principal en el orden correcto
+      Serial.println("\n[2/2] Iniciando secuencia de trabajo principal");
       ejecutarSecuencia();
       
-      Serial.println("\n>>> Secuencia Completada con Exito <<<");
-      Serial.println("Esperando nueva pulsacion de START...\n");
+      Serial.println("\n>>> PROCESO FINALIZADO <<<");
+      Serial.println("El brazo volvera a iniciar al pulsar START.\n");
 
-      // Delay de seguridad y limpieza de estado del botón
+      currentState = READY;
       delay(500);
       currentStartState = digitalRead(START_BUTTON_PIN);
     }
   }
 
   lastStartState = currentStartState;
-  delay(20);
+  delay(15);
 }
