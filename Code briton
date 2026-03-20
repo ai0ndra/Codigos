@@ -1,0 +1,205 @@
+#include <ServoEasing.hpp>
+
+ServoEasing SERVO1, SERVO2, SERVO3, SERVO4, SERVO5;
+
+int velocidad = 30;
+int espera = 1000;
+
+// Pines
+const int START_BUTTON_PIN = 19;
+const int PAUSE_SWITCH_PIN = 21;
+
+// Estados
+bool firstPress = true;
+bool isPaused = false;
+int lastStartState = HIGH;
+
+// ----------- 🔵 DETECCIÓN DE PULSACIÓN LARGA (ANTI-REPETICIÓN) -----------
+bool detectarPulsacionLarga() {
+  static int lastState = HIGH;
+  static unsigned long pressStartTime = 0;
+  static bool yaDetectado = false;
+
+  int reading = digitalRead(PAUSE_SWITCH_PIN);
+
+  // Inicio de pulsación
+  if (lastState == HIGH && reading == LOW) {
+    pressStartTime = millis();
+    yaDetectado = false;
+  }
+
+  // Pulsación larga
+  if (reading == LOW && !yaDetectado) {
+    if (millis() - pressStartTime > 600) {
+      yaDetectado = true; // evita múltiples triggers
+      lastState = reading;
+      return true;
+    }
+  }
+
+  // Reset al soltar
+  if (reading == HIGH) {
+    yaDetectado = false;
+  }
+
+  lastState = reading;
+  return false;
+}
+
+// ----------- 🔴 PAUSA TIPO TOGGLE -----------
+void verificarPausa() {
+
+  if (detectarPulsacionLarga()) {
+
+    isPaused = !isPaused;
+
+    if (isPaused) {
+      Serial.println("⏸ PAUSA ACTIVADA");
+
+      SERVO1.stop();
+      SERVO2.stop();
+      SERVO3.stop();
+      SERVO4.stop();
+      SERVO5.stop();
+    } else {
+      Serial.println("▶ REANUDANDO");
+    }
+  }
+
+  // 🔴 Si está en pausa, se queda aquí detenido
+  while (isPaused) {
+    delay(50);
+
+    // Espera otra pulsación larga para salir
+    if (detectarPulsacionLarga()) {
+      isPaused = false;
+      Serial.println("▶ REANUDANDO");
+    }
+  }
+}
+
+// ----------- 🟢 MOVIMIENTO OPTIMIZADO -----------
+void moverUnServo(ServoEasing &s, int target) {
+
+  s.startEaseTo(target, velocidad);
+
+  while (s.isMoving()) {
+    verificarPausa();
+    delay(10);
+  }
+
+  // Corrección fina
+  while (abs(s.getCurrentAngle() - target) > 1) {
+    s.startEaseTo(target, velocidad);
+
+    while (s.isMoving()) {
+      verificarPausa();
+      delay(10);
+    }
+  }
+}
+
+// ----------- 🟡 DELAY INTELIGENTE -----------
+void esperar(int ms) {
+  unsigned long inicio = millis();
+
+  while (millis() - inicio < ms) {
+    verificarPausa();
+    delay(10);
+  }
+}
+
+// ----------- 🔵 HOMING SEGURO -----------
+void homingSeguro(ServoEasing &servo, int pin, int destino) {
+  servo.attach(pin);
+
+  for (int p = 45; p <= destino; p++) {
+    servo.write(p);
+    delay(40);
+  }
+}
+
+// ----------- 🟣 SECUENCIA -----------
+void ejecutarSecuencia() {
+
+  Serial.println("Iniciando secuencia...");
+
+  // HOME
+  moverUnServo(SERVO4, 110);
+  moverUnServo(SERVO1, 90);
+  moverUnServo(SERVO2, 90);
+  moverUnServo(SERVO3, 90);
+  moverUnServo(SERVO5, 90);
+  esperar(espera);
+
+  // TRABAJO
+  moverUnServo(SERVO1, 56);
+  moverUnServo(SERVO4, 145);//135 mas inclinado
+  moverUnServo(SERVO3, 60);//56 se quiere que este mas arriba 
+  moverUnServo(SERVO2, 125);
+  moverUnServo(SERVO5, 43);
+  esperar(espera);
+
+  moverUnServo(SERVO2, 80);
+  moverUnServo(SERVO4, 90);
+  esperar(espera);
+
+  moverUnServo(SERVO1, 135);
+  moverUnServo(SERVO4, 90);
+  moverUnServo(SERVO3, 65);
+  moverUnServo(SERVO2, 115);
+  moverUnServo(SERVO5, 90);
+  esperar(espera);
+
+  Serial.println("Secuencia terminada");
+}
+
+// ----------- ⚙️ SETUP -----------
+void setup() {
+  Serial.begin(115200);
+
+  pinMode(START_BUTTON_PIN, INPUT_PULLUP);
+  pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
+
+  Serial.println("Sistema listo");
+}
+
+// ----------- 🔁 LOOP -----------
+void loop() {
+
+  verificarPausa();
+
+  int currentState = digitalRead(START_BUTTON_PIN);
+
+  if (currentState == LOW && lastStartState == HIGH) {
+
+    delay(50);
+
+    if (digitalRead(START_BUTTON_PIN) == LOW) {
+
+      if (firstPress) {
+        Serial.println("Homing inicial...");
+
+        homingSeguro(SERVO1, 23, 90);
+        homingSeguro(SERVO2, 33, 90);
+        homingSeguro(SERVO3, 32, 90);
+        homingSeguro(SERVO4, 25, 90);
+        homingSeguro(SERVO5, 22, 90);
+
+        SERVO1.setEasingType(EASE_CUBIC_IN_OUT);
+        SERVO2.setEasingType(EASE_CUBIC_IN_OUT);
+        SERVO3.setEasingType(EASE_CUBIC_IN_OUT);
+        SERVO4.setEasingType(EASE_CUBIC_IN_OUT);
+        SERVO5.setEasingType(EASE_CUBIC_IN_OUT);
+
+        firstPress = false;
+        esperar(espera);
+      }
+
+      ejecutarSecuencia();
+    }
+  }
+
+  lastStartState = currentState;
+  delay(10);
+}
