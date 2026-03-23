@@ -34,7 +34,7 @@ void verificarBotonPausa() {
     if (digitalRead(PAUSE_SWITCH_PIN) == HIGH) return; // Si fue un pico corto, ignorar
 
     if (!isPaused) {
-      Serial.println("PAUSA ACTIVADA.");
+      Serial.println(">>> PAUSA ACTIVADA.");
       SERVO1.stop();
       SERVO2.stop();
       SERVO3.stop();
@@ -49,7 +49,7 @@ void verificarBotonPausa() {
     }
 
     if (isPaused) {
-      Serial.println("REANUDANDO...");
+      Serial.println(">>> REANUDANDO...");
       isPaused = false;
     }
   }
@@ -61,6 +61,8 @@ void moverUnServo(ServoEasing &s, int target, const char* name) {
 
   // Mientras el servo no haya llegado a su destino (usamos abs para evitar problemas de precision)
   while (abs(s.getCurrentAngle() - target) > 1) {
+
+    verificarBotonPausa();
    
     // Iniciar o continuar movimiento hacia el objetivo
     s.startEaseTo(target, velocidad);
@@ -95,19 +97,25 @@ void esperarPausaYDelay(int ms) {
 
 void setup() {
   Serial.begin(115200);
- 
+
+  // Configuración de pines (INPUT_PULLUP asegura que esten en HIGH si no se pulsan)
   pinMode(START_BUTTON_PIN, INPUT_PULLUP);
   pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
  
   delay(500);
-  Serial.println("\n--- SISTEMA REINICIADO ---"); // Ayuda a detectar si el ESP32 se resetea por falta de energia
+  Serial.println("\n--- SISTEMA REINICIADO ---");
+
+  // Diagnóstico de hardware (Para verificar si los pines están en LOW por error)
+  Serial.print("Estado Pin Inicio (19): "); Serial.println(digitalRead(START_BUTTON_PIN) == LOW ? "PULSADO (LOW)" : "LIBRE (HIGH)");
+  Serial.print("Estado Pin Pausa (21): "); Serial.println(digitalRead(PAUSE_SWITCH_PIN) == LOW ? "CERRADO (LOW)" : "ABIERTO (HIGH)");
 
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
-    Serial.println(">>> AVISO: El interruptor de PAUSA esta CERRADO.");
+    Serial.println(">>> AVISO: El interruptor de PAUSA esta detectado como CERRADO.");
   }
 
+  // Inicialización del estado del botón para detectar el flanco de bajada
   lastStartState = digitalRead(START_BUTTON_PIN);
-  Serial.println("Brazo Robot Listo.");
+  Serial.println("Brazo Robot Listo. Pulse START para comenzar.");
 }
 
 void ejecutarSecuencia() {
@@ -142,24 +150,31 @@ void ejecutarSecuencia() {
   moverUnServo(SERVO5, 45, "S5");
   esperarPausaYDelay(espera);
  
-  Serial.println(">>> Secuencia finalizada. <<<");
+  Serial.println(">>> SECUENCIA FINALIZADA CON EXITO <<<");
 }
 
 void loop() {
-  // Vigilancia constante de la pausa
+  // Vigilancia constante de la pausa (Si esta LOW, bloqueamos todo)
   if (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
+    // Si el usuario intenta arrancar mientras esta en PAUSA, avisamos por Serial
+    if (digitalRead(START_BUTTON_PIN) == LOW && lastStartState == HIGH) {
+      Serial.println(">>> ERROR: No se puede iniciar porque la PAUSA (Pin 21) esta ACTIVADA.");
+      delay(500);
+    }
     verificarBotonPausa();
     return;
   }
 
   int currentStartState = digitalRead(START_BUTTON_PIN);
 
-  // Detectar flanco de bajada (Presion del boton)
+  // Detectar pulsación (De HIGH a LOW)
   if (currentStartState == LOW && lastStartState == HIGH) {
-    delay(100); // Debounce para el boton de inicio
+    delay(100); // Debounce
     if (digitalRead(START_BUTTON_PIN) == LOW) {
+      Serial.println(">>> Boton de INICIO detectado. Procesando...");
+
       if (firstPress) {
-        Serial.println("Realizando Homing inicial de seguridad...");
+        Serial.println("Realizando Homing inicial lento...");
         alcanzarHomeConPasos(SERVO1, 23, 90);
         alcanzarHomeConPasos(SERVO2, 33, 90);
         alcanzarHomeConPasos(SERVO3, 32, 90);
@@ -177,8 +192,10 @@ void loop() {
       }
 
       ejecutarSecuencia();
-      // Resetear estado para evitar doble ejecucion si se mantiene presionado
-      currentStartState = digitalRead(START_BUTTON_PIN);
+
+      // Esperar a que suelten el boton para evitar que reinicie solo
+      while(digitalRead(START_BUTTON_PIN) == LOW) { delay(10); }
+      currentStartState = HIGH; // Forzar estado HIGH tras soltar
     }
   }
 
