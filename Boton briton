@@ -1,0 +1,116 @@
+
+// ===================== PINES =====================
+#define START_BUTTON_PIN 2
+#define PAUSE_SWITCH_PIN 4
+#define Led 13
+
+// ===================== VARIABLES =====================
+bool firstPress = true;
+int lastStartState = LOW;
+int espera = 500;
+
+// ===================== FUNCIONES =====================
+
+void esperar(int t) {
+  delay(t);
+}
+
+void moverUnServo(int servo, int angulo) {
+  // tu librería real de servos
+}
+
+void homingSeguro(int servo, int posInicial, int posFinal) {
+  moverUnServo(servo, posFinal);
+  delay(300);
+}
+
+void verificarPausa() {
+  if (digitalRead(PAUSE_SWITCH_PIN) == HIGH) {
+    Serial.println("Pausa activa");
+
+    while (digitalRead(PAUSE_SWITCH_PIN) == HIGH) {
+      delay(10);
+    }
+
+    Serial.println("Pausa liberada");
+  }
+}
+
+// ===================== SECUENCIA =====================
+void ejecutarSecuencia() {
+
+  moverUnServo(1, 56);
+  moverUnServo(4, 145);
+  moverUnServo(3, 60);
+  moverUnServo(2, 125);
+  moverUnServo(5, 43);
+  esperar(espera);
+
+  moverUnServo(2, 100);
+  moverUnServo(4, 90);
+  esperar(espera);
+
+  moverUnServo(1, 135);
+  moverUnServo(4, 90);
+  moverUnServo(3, 65);
+  moverUnServo(2, 115);
+  moverUnServo(5, 130);
+  esperar(espera);
+
+  Serial.println("Secuencia terminada");
+}
+
+// ===================== SETUP =====================
+void setup() {
+  Serial.begin(115200);
+
+  // 🔥 CAMBIO IMPORTANTE (ESTABILIDAD BOTÓN)
+  pinMode(START_BUTTON_PIN, INPUT);   // ❗ ya NO pull-down interno
+  pinMode(PAUSE_SWITCH_PIN, INPUT);
+
+  pinMode(Led, OUTPUT);
+
+  Serial.println("Sistema listo");
+}
+
+// ===================== LOOP =====================
+void loop() {
+
+  digitalWrite(Led, HIGH);
+  delay(500);
+  digitalWrite(Led, LOW);
+  delay(500);
+
+  verificarPausa();
+
+  int currentState = digitalRead(START_BUTTON_PIN);
+
+  // flanco de subida (botón activo con pull-down externo)
+  if (currentState == HIGH && lastStartState == LOW) {
+
+    delay(50); // debounce
+
+    if (digitalRead(START_BUTTON_PIN) == HIGH) {
+
+      Serial.println("Botón presionado");
+
+      if (firstPress) {
+        Serial.println("Homing inicial...");
+
+        homingSeguro(1, 23, 90);
+        homingSeguro(2, 33, 90);
+        homingSeguro(3, 32, 90);
+        homingSeguro(4, 25, 90);
+        homingSeguro(5, 22, 90);
+
+        firstPress = false;
+        esperar(espera);
+      }
+
+      ejecutarSecuencia();
+    }
+  }
+
+  lastStartState = currentState;
+  delay(10);
+}
