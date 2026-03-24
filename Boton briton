@@ -1,56 +1,52 @@
 #include <ServoEasing.hpp>
 
-// ===================== CONFIGURACIÓN DE PINES =====================
-// Botones (Conectar de Pin a GND físico)
-const int START_BUTTON_PIN = 19;
-const int PAUSE_SWITCH_PIN = 21;
+// ===================== PINES (Basados en el código OG del usuario) =====================
+#define START_BUTTON_PIN 2   // Botón de Inicio (D2 a VCC con pull-down externo)
+#define PAUSE_SWITCH_PIN 4   // Interruptor de Pausa (D4 a VCC con pull-down externo)
+#define LED_AZUL 2            // ¡ATENCIÓN! El LED azul interno suele estar en el Pin 2
+#define LED_OG 13             // LED original en pin 13
 
-// LED Azul (Interno en la mayoría de ESP32)
-const int BLUE_LED_PIN = 2;
+// Servos (Pins confirmados de memoria de hardware anterior)
+const int S1_PIN = 23;
+const int S2_PIN = 33;
+const int S3_PIN = 32;
+const int S4_PIN = 25;
+const int S5_PIN = 22;
 
-// Pines de los Servos (Basados en el hardware verificado)
-const int SERVO1_PIN = 23;
-const int SERVO2_PIN = 33;
-const int SERVO3_PIN = 32;
-const int SERVO4_PIN = 25;
-const int SERVO5_PIN = 22;
+// ===================== VARIABLES [DIAGNÓSTICO DE VOLTAJE] =====================
+// Esta variable sobrevive a los reinicios para avisarte si la fuente falla
+RTC_DATA_ATTR int contadorReinicios = 0;
 
-// ===================== VARIABLES GLOBALES =====================
 ServoEasing SERVO1, SERVO2, SERVO3, SERVO4, SERVO5;
 
 bool firstPress = true;
-int lastStartState = HIGH;
+int lastStartState = LOW;
 bool isPaused = false;
-
-int espera    = 1000;
+int espera = 1000;
 int velocidad = 30;
 
-// Variables para LED Azul no bloqueante
+// Variables para LED no bloqueante
 unsigned long lastBlinkTime = 0;
 bool ledState = LOW;
 
-// ===================== FUNCIONES DE ESTADO (NO BLOQUEANTES) =====================
+// ===================== FUNCIONES DE APOYO =====================
 
-/**
- * Mantiene el LED parpadeando y verifica el estado del sistema.
- * Debe llamarse frecuentemente en todos los bucles (while/delay).
- */
-void refrescarSistema() {
-  // 1. Parpadeo del LED Azul (500ms encendido, 500ms apagado)
+void refrescarLED() {
+  // Parpadeo cada 500ms sin detener el código
   if (millis() - lastBlinkTime >= 500) {
     lastBlinkTime = millis();
     ledState = !ledState;
-    digitalWrite(BLUE_LED_PIN, ledState);
+    digitalWrite(LED_OG, ledState);
+
+    // NOTA: Si el botón de inicio está en el Pin 2, el LED azul no parpadeará
+    // correctamente porque comparten el mismo pin físico.
   }
 }
 
-/**
- * Detiene los servos y bloquea la ejecución si el interruptor de pausa está activo.
- */
 void verificarPausa() {
-  refrescarSistema(); // Asegurar que el LED parpadea mientras revisamos la pausa
-
-  if (digitalRead(PAUSE_SWITCH_PIN) == LOW) { // LOW = Pausa activa (Conexión a GND)
+  refrescarLED();
+  // Lógica OG: HIGH es Pausa activa (Switch cerrado a VCC)
+  if (digitalRead(PAUSE_SWITCH_PIN) == HIGH) {
     if (!isPaused) {
       Serial.println("⏸ PAUSA ACTIVADA");
       SERVO1.stop();
@@ -61,35 +57,34 @@ void verificarPausa() {
       isPaused = true;
     }
 
-    // Bloqueo mientras el interruptor esté cerrado (LOW)
-    while (digitalRead(PAUSE_SWITCH_PIN) == LOW) {
-      refrescarSistema(); // El LED sigue parpadeando durante la pausa
+    while (digitalRead(PAUSE_SWITCH_PIN) == HIGH) {
+      refrescarLED();
       delay(20);
     }
 
     if (isPaused) {
-      Serial.println("▶ REANUDANDO");
+      Serial.println("▶ REANUDANDO...");
       isPaused = false;
     }
   }
 }
 
-// ===================== FUNCIONES DE MOVIMIENTO =====================
-
 /**
- * Mueve un servo a su destino de forma segura y permite pausar.
+ * Mueve un solo servo suavemente (Easing) y espera a que termine.
+ * Incluye una pequeña pausa extra para no saturar la fuente de alimentación.
  */
 void moverUnServo(ServoEasing &s, int target, const char* nombre) {
+  if (abs(s.getCurrentAngle() - target) <= 1) return;
+
   Serial.print("Moviendo "); Serial.print(nombre); Serial.print(" a "); Serial.println(target);
 
   while (abs(s.getCurrentAngle() - target) > 1) {
     verificarPausa();
-
     s.startEaseTo(target, velocidad);
-    delay(50); // Estabilización para la librería
+    delay(50); // Estabilización
 
     while (s.isMoving()) {
-      verificarPausa(); // El LED parpadea y la pausa se detecta durante el movimiento
+      verificarPausa();
       delay(10);
     }
 
@@ -97,11 +92,11 @@ void moverUnServo(ServoEasing &s, int target, const char* nombre) {
       if (abs(s.getCurrentAngle() - target) <= 1) break;
     }
   }
+
+  // ⚡ MITIGACIÓN DE PICOS: Pausa de 150ms entre movimientos de servos
+  delay(150);
 }
 
-/**
- * Versión de delay que no bloquea ni el LED ni el botón de pausa.
- */
 void esperar(int ms) {
   unsigned long start = millis();
   while (millis() - start < ms) {
@@ -110,23 +105,21 @@ void esperar(int ms) {
   }
 }
 
-/**
- * Homing inicial lento por seguridad física.
- */
 void homingSeguro(ServoEasing &servo, int pin, int destino) {
   servo.attach(pin);
+  Serial.print("Homing pin "); Serial.println(pin);
   for (int p = 45; p <= destino; p++) {
-    verificarPausa(); // El LED parpadea durante el homing
+    verificarPausa();
     servo.write(p);
     delay(40);
   }
   servo.setEasingType(EASE_CUBIC_IN_OUT);
+  delay(300); // Pausa para estabilizar voltaje tras el attach
 }
 
 // ===================== SECUENCIA DE TRABAJO =====================
-
 void ejecutarSecuencia() {
-  Serial.println("Iniciando secuencia...");
+  Serial.println("Iniciando secuencia (Modo Seguro)...");
 
   moverUnServo(SERVO1, 56, "S1");
   moverUnServo(SERVO4, 145, "S4");
@@ -146,56 +139,59 @@ void ejecutarSecuencia() {
   moverUnServo(SERVO5, 130, "S5");
   esperar(espera);
 
-  Serial.println(">>> Secuencia completada <<<");
+  Serial.println(">>> SECUENCIA FINALIZADA <<<");
 }
 
 // ===================== SETUP =====================
-
 void setup() {
   Serial.begin(115200);
+  contadorReinicios++;
 
-  pinMode(START_BUTTON_PIN, INPUT_PULLUP);
-  pinMode(PAUSE_SWITCH_PIN, INPUT_PULLUP);
-  pinMode(BLUE_LED_PIN, OUTPUT);
+  pinMode(START_BUTTON_PIN, INPUT);
+  pinMode(PAUSE_SWITCH_PIN, INPUT);
+  pinMode(LED_OG, OUTPUT);
 
-  delay(200);
-  Serial.println("\n--- SISTEMA REINICIADO ---");
-  Serial.println("El LED azul debe parpadear ahora.");
+  delay(500);
+  Serial.println("\n-----------------------------------");
+  Serial.print("SISTEMA LISTO. Intento de inicio #"); Serial.println(contadorReinicios);
+  if (contadorReinicios > 1) {
+    Serial.println("¡OJO! El sistema se reinició solo. Revisa la fuente de poder.");
+  }
+  Serial.println("-----------------------------------");
 
   lastStartState = digitalRead(START_BUTTON_PIN);
 }
 
 // ===================== LOOP PRINCIPAL =====================
-
 void loop() {
-  // El LED parpadea y la pausa se revisa constantemente
+  // El LED parpadea y revisamos pausa continuamente
   verificarPausa();
 
   int currentState = digitalRead(START_BUTTON_PIN);
 
-  // Detección de pulsación de INICIO (Flanco de bajada: HIGH -> LOW)
-  if (currentState == LOW && lastStartState == HIGH) {
-    delay(50); // Debounce
+  // Detectar pulsación (Flanco de subida: LOW -> HIGH según código OG)
+  if (currentState == HIGH && lastStartState == LOW) {
+    delay(100); // Debounce fuerte
 
-    if (digitalRead(START_BUTTON_PIN) == LOW) {
-      Serial.println("Botón de inicio detectado.");
+    if (digitalRead(START_BUTTON_PIN) == HIGH) {
+      Serial.println(">>> BOTÓN PRESIONADO <<<");
 
       if (firstPress) {
-        Serial.println("Realizando Homing inicial de seguridad...");
-        homingSeguro(SERVO1, SERVO1_PIN, 90);
-        homingSeguro(SERVO2, SERVO2_PIN, 90);
-        homingSeguro(SERVO3, SERVO3_PIN, 90);
-        homingSeguro(SERVO4, SERVO4_PIN, 90);
-        homingSeguro(SERVO5, SERVO5_PIN, 90);
+        Serial.println("Realizando Homing Secuencial...");
+        homingSeguro(SERVO1, S1_PIN, 90);
+        homingSeguro(SERVO2, S2_PIN, 90);
+        homingSeguro(SERVO3, S3_PIN, 90);
+        homingSeguro(SERVO4, S4_PIN, 90);
+        homingSeguro(SERVO5, S5_PIN, 90);
         firstPress = false;
         esperar(espera);
       }
 
       ejecutarSecuencia();
 
-      // Esperar a que se suelte el botón
-      while(digitalRead(START_BUTTON_PIN) == LOW) {
-        refrescarSistema();
+      // Esperar a que el usuario suelte el botón para evitar repeticiones
+      while(digitalRead(START_BUTTON_PIN) == HIGH) {
+        refrescarLED();
         delay(10);
       }
     }
