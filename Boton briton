@@ -2,19 +2,20 @@
 #include <ServoEasing.hpp>
 
 /**
- * 🤖 CÓDIGO FINAL BRAZO ROBÓTICO - VERSIÓN ULTRA-SEGURA (VOLTAJE BAJO)
+ * 🤖 CÓDIGO FINAL BRAZO ROBÓTICO - VERSIÓN POLISHED (PIN 2, 4, 13)
  *
  * Este código resuelve:
- * 1. Botón de inicio que no responde (Quitamos delay(500) del loop).
- * 2. Lógica de botón (Active Low): Presionado = Conectado a Tierra (GND).
+ * 1. Botón de inicio (Pin 2): Lógica Active Low (Ground al presionar).
+ * 2. Interruptor de Pausa (Pin 4): Lógica Latching (Sostenido).
+ *    - Si el interruptor está cerrado (GND), el sistema se detiene y el LED 13 queda ENCENDIDO fijo.
+ *    - Si el interruptor está abierto, el sistema corre y el LED 13 parpadea.
  * 3. Reinicios/Brownouts: Encendido ultra-lento uno por uno para no saturar la fuente.
- * 4. LED azul parpadeante sin bloqueo en Pin 13.
  */
 
 // ===================== CONFIGURACIÓN DE PINES (OG) =====================
 const int PIN_START  = 2;   // Botón Start (Presionar = LOW / Tierra)
-const int PIN_PAUSE  = 4;   // Switch Pausa (Activo = LOW / Tierra)
-const int PIN_LED    = 13;  // LED de Estado
+const int PIN_PAUSE  = 4;   // Interruptor Pausa (Cerrado = LOW / Tierra)
+const int PIN_LED    = 13;  // LED de Estado (Parpadea = Trabajando, Fijo = Pausa)
 
 // Pines de los Servos (Confirmados)
 const int PIN_S1 = 23;
@@ -27,7 +28,7 @@ const int PIN_S5 = 22;
 ServoEasing SERVO1, SERVO2, SERVO3, SERVO4, SERVO5;
 
 bool firstPress = true;
-int lastStartState = HIGH; // Cambiado a HIGH para lógica Active Low
+int lastStartState = HIGH;
 bool isPaused = false;
 
 int globalSpeed = 30; // Velocidad para la secuencia normal
@@ -43,39 +44,38 @@ RTC_DATA_ATTR int resetCounter = 0;
 // ===================== FUNCIONES DE ESTADO =====================
 
 /**
- * Mantiene el LED parpadeando y revisa la pausa continuamente.
- * Debe ser llamada en cada bucle (while/delay).
+ * Mantiene el LED actualizado y revisa la pausa continuamente.
+ * - Si está en pausa: LED Fijo
+ * - Si está corriendo: LED Parpadeante
  */
 void refreshSystem() {
-  // 1. Parpadeo del LED (500ms)
-  if (millis() - lastBlinkTime >= 500) {
-    lastBlinkTime = millis();
-    ledState = !ledState;
-    digitalWrite(PIN_LED, ledState);
-  }
-
-  // 2. Detección de Pausa (LOW = Activo / Conectado a Tierra)
+  // 1. Detección de Pausa (LOW = Interruptor cerrado a Tierra)
   if (digitalRead(PIN_PAUSE) == LOW) {
     if (!isPaused) {
-      Serial.println("⏸ PAUSA ACTIVADA");
+      Serial.println("⏸ PAUSA ACTIVADA (Interruptor cerrado)");
       SERVO1.stop(); SERVO2.stop(); SERVO3.stop(); SERVO4.stop(); SERVO5.stop();
+      digitalWrite(PIN_LED, HIGH); // LED Fijo durante pausa
       isPaused = true;
     }
 
-    // Mientras el switch de pausa esté en LOW (Tierra), el código se bloquea aquí
+    // Mientras el interruptor de pausa esté en LOW (Tierra), el código se bloquea aquí
     while (digitalRead(PIN_PAUSE) == LOW) {
-      // El LED sigue parpadeando durante la pausa
-      if (millis() - lastBlinkTime >= 500) {
-        lastBlinkTime = millis();
-        ledState = !ledState;
-        digitalWrite(PIN_LED, ledState);
-      }
+      digitalWrite(PIN_LED, HIGH); // Mantener LED encendido
       delay(20);
     }
 
     if (isPaused) {
-      Serial.println("▶ REANUDANDO...");
+      Serial.println("▶ REANUDANDO (Interruptor abierto)");
       isPaused = false;
+    }
+  }
+
+  // 2. Parpadeo del LED (500ms) SOLO si no estamos en pausa
+  if (!isPaused) {
+    if (millis() - lastBlinkTime >= 500) {
+      lastBlinkTime = millis();
+      ledState = !ledState;
+      digitalWrite(PIN_LED, ledState);
     }
   }
 }
@@ -116,8 +116,8 @@ void moveServo(ServoEasing &s, int target, const char* name) {
     }
   }
 
-  // Pausa de 200ms tras cada movimiento para evitar picos de corriente
-  delay(200);
+  // Pausa tras cada movimiento para evitar picos de corriente
+  delay(150);
 }
 
 /**
@@ -125,9 +125,8 @@ void moveServo(ServoEasing &s, int target, const char* name) {
  * Se mueve grado por grado manualmente.
  */
 void slowStartCalibration(ServoEasing &servo, int pin, int startAngle, int endAngle) {
-  // ⚡ ULTRA-SAFE: Esperamos un segundo antes de conectar el siguiente servo
   Serial.print("Preparando Pin "); Serial.println(pin);
-  delay(1000);
+  delay(800);
 
   servo.attach(pin);
 
@@ -135,18 +134,18 @@ void slowStartCalibration(ServoEasing &servo, int pin, int startAngle, int endAn
   for (int p = startAngle; p <= endAngle; p++) {
     refreshSystem();
     servo.write(p);
-    delay(80); // 80ms por grado = Estabilidad total
+    delay(80);
   }
 
   // Activamos el suavizado (Easing)
   servo.setEasingType(EASE_CUBIC_IN_OUT);
-  delay(500); // Pausa de estabilización después de mover
+  delay(400);
 }
 
 // ===================== SECUENCIA DE TRABAJO (TUS MOVIMIENTOS) =====================
 
 void runWorkSequence() {
-  Serial.println(">>> INICIANDO SECUENCIA DE TRABAJO <<<");
+  Serial.println(">>> INICIANDO SECUENCIA <<<");
 
   // PARTE 1: (Orden solicitado: 1, 4, 3, 2, 5)
   moveServo(SERVO1, 56, "S1");
@@ -178,8 +177,6 @@ void setup() {
   Serial.begin(115200);
   resetCounter++;
 
-  // 🔵 LÓGICA DE BOTÓN: INPUT_PULLUP mantiene el pin en 5V (HIGH)
-  // cuando el botón está abierto. Al presionar, el pin baja a 0V (LOW).
   pinMode(PIN_START, INPUT_PULLUP);
   pinMode(PIN_PAUSE, INPUT_PULLUP);
   pinMode(PIN_LED, OUTPUT);
@@ -187,10 +184,15 @@ void setup() {
   delay(500);
   Serial.println("\n-----------------------------------");
   Serial.print("BRAZO ROBÓTICO - INTENTO #"); Serial.println(resetCounter);
+
+  // Diagnóstico de botones al inicio
+  Serial.print("Estado Botón INICIO (P2): "); Serial.println(digitalRead(PIN_START) == LOW ? "PRESIONADO" : "ABIERTO");
+  Serial.print("Estado Interruptor PAUSA (P4): "); Serial.println(digitalRead(PIN_PAUSE) == LOW ? "CERRADO (PAUSA)" : "ABIERTO");
+
   if (resetCounter > 1) {
-    Serial.println("¡AVISO! El ESP32 se reinició. Bajando carga eléctrica...");
+    Serial.println("¡AVISO! El ESP32 se reinició. Cuidado con la energía.");
   }
-  Serial.println("Esperando botón de Inicio...");
+  Serial.println("Esperando botón de Inicio para arrancar...");
   Serial.println("-----------------------------------");
 
   lastStartState = digitalRead(PIN_START);
@@ -199,31 +201,35 @@ void setup() {
 // ===================== LOOP PRINCIPAL =====================
 
 void loop() {
-  // LED parpadea y pausa se revisa continuamente
+  // El LED parpadea y pausa se revisa constantemente
   refreshSystem();
 
   int currentStartState = digitalRead(PIN_START);
 
   // Detección de pulsación (De HIGH a LOW = Botón presionado a Tierra)
   if (currentStartState == LOW && lastStartState == HIGH) {
-    delay(100); // Filtro de ruido
+    delay(150); // Debounce fuerte para evitar inicios accidentales
 
     if (digitalRead(PIN_START) == LOW) {
+
+      // Si el interruptor de pausa está activo, no permitimos el inicio
+      if (digitalRead(PIN_PAUSE) == LOW) {
+        Serial.println(">>> ERROR: No se puede iniciar porque la PAUSA está activa.");
+        while(digitalRead(PIN_START) == LOW) { refreshSystem(); delay(10); } // Esperar a que suelte
+        return;
+      }
+
       Serial.println(">>> BOTÓN INICIO DETECTADO <<<");
 
       if (firstPress) {
-        Serial.println("INICIANDO CALIBRACIÓN ULTRA-SEGURA...");
-
-        // Calibración desde tus ángulos de inicio hasta 90 (Home)
-        // Staggered: attach y move uno por uno con pausas de 1 segundo.
+        Serial.println("INICIANDO CALIBRACIÓN SEGURA...");
         slowStartCalibration(SERVO1, PIN_S1, 23, 90);
         slowStartCalibration(SERVO2, PIN_S2, 33, 90);
         slowStartCalibration(SERVO3, PIN_S3, 32, 90);
         slowStartCalibration(SERVO4, PIN_S4, 25, 90);
         slowStartCalibration(SERVO5, PIN_S5, 22, 90);
-
         firstPress = false;
-        safeWait(2000); // Pausa larga tras el homing por seguridad eléctrica
+        safeWait(2000);
       }
 
       runWorkSequence();
