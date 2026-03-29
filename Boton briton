@@ -1,116 +1,229 @@
+#include <ESP32Servo.h>
+#include <ServoEasing.hpp>
 
-// ===================== PINES =====================
-#define START_BUTTON_PIN 2
-#define PAUSE_SWITCH_PIN 4
-#define Led 13
+/**
+ * 🤖 CÓDIGO FINAL BRAZO ROBÓTICO - VERSIÓN AUTO-CALIBRADA (P2, P4)
+ *
+ * Este código resuelve:
+ * 1. Lógica del Interruptor (Pin 4): Se auto-calibra al arrancar.
+ *    - No importa si el interruptor está "abierto" o "cerrado" al encender.
+ *    - El brazo arrancará en modo listo, y la PAUSA se activa al CAMBIAR el interruptor de posición.
+ * 2. Código Limpio: Se eliminó todo lo relacionado con el LED (Pin 13).
+ * 3. Botón Start (Pin 2): Lógica Active Low (Ground al presionar).
+ * 4. Estabilidad Eléctrica: Encendido escalonado y movimientos suaves (Easing).
+ */
 
-// ===================== VARIABLES =====================
+// ===================== CONFIGURACIÓN DE PINES (OG) =====================
+const int PIN_START  = 2;   // Botón Start (Presionar = LOW / Tierra)
+const int PIN_PAUSE  = 4;   // Interruptor Pausa (Auto-calibrado)
+
+// Pines de los Servos (Confirmados)
+const int PIN_S1 = 23;
+const int PIN_S2 = 33;
+const int PIN_S3 = 32;
+const int PIN_S4 = 25;
+const int PIN_S5 = 22;
+
+// ===================== VARIABLES GLOBALES =====================
+ServoEasing SERVO1, SERVO2, SERVO3, SERVO4, SERVO5;
+
 bool firstPress = true;
-int lastStartState = LOW;
-int espera = 500;
+int lastStartState = HIGH;
+bool isPaused = false;
+int normalPauseState; // Se guarda el estado inicial del interruptor al encender
 
-// ===================== FUNCIONES =====================
+int globalSpeed = 30; // Velocidad para la secuencia normal
+int globalWait  = 1000; // Un segundo de espera entre bloques
 
-void esperar(int t) {
-  delay(t);
+// [DIAGNÓSTICO] Para detectar si el ESP32 se reinicia por falta de energía
+RTC_DATA_ATTR int resetCounter = 0;
+
+// ===================== FUNCIONES DE ESTADO =====================
+
+/**
+ * Revisa el interruptor de pausa continuamente.
+ * La pausa se activa si el estado actual es DIFERENTE al estado de arranque.
+ */
+void refreshSystem() {
+  int currentPauseState = digitalRead(PIN_PAUSE);
+
+  // Si el estado actual es diferente al que grabamos al encender...
+  if (currentPauseState != normalPauseState) {
+    if (!isPaused) {
+      Serial.println("⏸ PAUSA ACTIVADA (Cambio de posición)");
+      if (!firstPress) {
+        SERVO1.stop(); SERVO2.stop(); SERVO3.stop(); SERVO4.stop(); SERVO5.stop();
+      }
+      isPaused = true;
+    }
+
+    // Mientras el interruptor siga en la posición de pausa, el código se bloquea aquí
+    while (digitalRead(PIN_PAUSE) != normalPauseState) {
+      delay(20);
+    }
+
+    if (isPaused) {
+      Serial.println("▶ CONTINUANDO (Posición original)");
+      isPaused = false;
+    }
+  }
 }
 
-void moverUnServo(int servo, int angulo) {
-  // tu librería real de servos
+/**
+ * Espera (delay) sin bloquear la detección de pausa.
+ */
+void safeWait(int ms) {
+  unsigned long start = millis();
+  while (millis() - start < ms) {
+    refreshSystem();
+    delay(10);
+  }
 }
 
-void homingSeguro(int servo, int posInicial, int posFinal) {
-  moverUnServo(servo, posFinal);
-  delay(300);
-}
+// ===================== MOVIMIENTOS SEGUROS =====================
 
-void verificarPausa() {
-  if (digitalRead(PAUSE_SWITCH_PIN) == HIGH) {
-    Serial.println("Pausa activa");
+/**
+ * Mueve un servo individual de forma suave (Easing) y espera a que llegue.
+ */
+void moveServo(ServoEasing &s, int target, const char* name) {
+  if (abs(s.getCurrentAngle() - target) <= 1) return;
 
-    while (digitalRead(PAUSE_SWITCH_PIN) == HIGH) {
+  Serial.print("Moviendo "); Serial.print(name); Serial.print(" a "); Serial.println(target);
+
+  while (abs(s.getCurrentAngle() - target) > 1) {
+    refreshSystem();
+    s.startEaseTo(target, globalSpeed);
+    delay(50);
+
+    while (s.isMoving()) {
+      refreshSystem();
       delay(10);
     }
 
-    Serial.println("Pausa liberada");
+    if (!isPaused && !s.isMoving()) {
+      if (abs(s.getCurrentAngle() - target) <= 1) break;
+    }
   }
+  delay(150);
 }
 
-// ===================== SECUENCIA =====================
-void ejecutarSecuencia() {
+/**
+ * Calibración ULTRA-LENTA para el primer arranque.
+ */
+void slowStartCalibration(ServoEasing &servo, int pin, int startAngle, int endAngle) {
+  Serial.print("Preparando Pin "); Serial.println(pin);
+  delay(1000); // ⚡ Staggered: Esperar 1s entre servos para estabilidad
 
-  moverUnServo(1, 56);
-  moverUnServo(4, 145);
-  moverUnServo(3, 60);
-  moverUnServo(2, 125);
-  moverUnServo(5, 43);
-  esperar(espera);
+  servo.attach(pin);
 
-  moverUnServo(2, 100);
-  moverUnServo(4, 90);
-  esperar(espera);
+  // Movimiento grado a grado muy lento (80ms por grado)
+  for (int p = startAngle; p <= endAngle; p++) {
+    refreshSystem();
+    servo.write(p);
+    delay(80);
+  }
 
-  moverUnServo(1, 135);
-  moverUnServo(4, 90);
-  moverUnServo(3, 65);
-  moverUnServo(2, 115);
-  moverUnServo(5, 130);
-  esperar(espera);
+  servo.setEasingType(EASE_CUBIC_IN_OUT);
+  delay(400);
+}
 
-  Serial.println("Secuencia terminada");
+// ===================== SECUENCIA DE TRABAJO =====================
+
+void runWorkSequence() {
+  Serial.println(">>> INICIANDO SECUENCIA <<<");
+
+  moveServo(SERVO1, 56, "S1");
+  moveServo(SERVO4, 145, "S4");
+  moveServo(SERVO3, 60, "S3");
+  moveServo(SERVO2, 125, "S2");
+  moveServo(SERVO5, 43, "S5");
+  safeWait(globalWait);
+
+  moveServo(SERVO2, 100, "S2");
+  moveServo(SERVO4, 90, "S4");
+  safeWait(globalWait);
+
+  moveServo(SERVO1, 135, "S1");
+  moveServo(SERVO4, 90, "S4");
+  moveServo(SERVO3, 65, "S3");
+  moveServo(SERVO2, 115, "S2");
+  moveServo(SERVO5, 130, "S5");
+  safeWait(globalWait);
+
+  Serial.println(">>> SECUENCIA FINALIZADA <<<");
 }
 
 // ===================== SETUP =====================
+
 void setup() {
   Serial.begin(115200);
+  resetCounter++;
 
-  // 🔥 CAMBIO IMPORTANTE (ESTABILIDAD BOTÓN)
-  pinMode(START_BUTTON_PIN, INPUT);   // ❗ ya NO pull-down interno
-  pinMode(PAUSE_SWITCH_PIN, INPUT);
+  pinMode(PIN_START, INPUT_PULLUP);
+  pinMode(PIN_PAUSE, INPUT_PULLUP);
 
-  pinMode(Led, OUTPUT);
+  delay(500);
+  Serial.println("\n-----------------------------------");
+  Serial.print("SISTEMA ARRANCANDO. Intento #"); Serial.println(resetCounter);
 
-  Serial.println("Sistema listo");
+  // 🚩 AUTO-CALIBRACIÓN DEL INTERRUPTOR
+  normalPauseState = digitalRead(PIN_PAUSE);
+  Serial.print("Estado de Arranque (Interruptor): "); Serial.println(normalPauseState == LOW ? "LOW" : "HIGH");
+  Serial.println("Cualquier cambio en el interruptor activará la PAUSA.");
+
+  if (resetCounter > 1) {
+    Serial.println("¡ADVERTENCIA! El ESP32 se reinició solo.");
+  }
+  Serial.println("Esperando botón de Inicio...");
+  Serial.println("-----------------------------------");
+
+  lastStartState = digitalRead(PIN_START);
 }
 
-// ===================== LOOP =====================
+// ===================== LOOP PRINCIPAL =====================
+
 void loop() {
+  refreshSystem();
 
-  digitalWrite(Led, HIGH);
-  delay(500);
-  digitalWrite(Led, LOW);
-  delay(500);
+  int currentStartState = digitalRead(PIN_START);
 
-  verificarPausa();
+  // Detección de pulsación (De HIGH a LOW = Botón presionado a Tierra)
+  if (currentStartState == LOW && lastStartState == HIGH) {
+    delay(150); // Debounce
 
-  int currentState = digitalRead(START_BUTTON_PIN);
+    if (digitalRead(PIN_START) == LOW) {
 
-  // flanco de subida (botón activo con pull-down externo)
-  if (currentState == HIGH && lastStartState == LOW) {
-
-    delay(50); // debounce
-
-    if (digitalRead(START_BUTTON_PIN) == HIGH) {
-
-      Serial.println("Botón presionado");
-
-      if (firstPress) {
-        Serial.println("Homing inicial...");
-
-        homingSeguro(1, 23, 90);
-        homingSeguro(2, 33, 90);
-        homingSeguro(3, 32, 90);
-        homingSeguro(4, 25, 90);
-        homingSeguro(5, 22, 90);
-
-        firstPress = false;
-        esperar(espera);
+      // Seguridad: No arrancar si la pausa está puesta (cambió de su estado inicial)
+      if (digitalRead(PIN_PAUSE) != normalPauseState) {
+        Serial.println(">>> ERROR: Pausa activa. Regresa el interruptor a su posición inicial.");
+        while(digitalRead(PIN_START) == LOW) { refreshSystem(); delay(10); }
+        return;
       }
 
-      ejecutarSecuencia();
+      Serial.println(">>> INICIO DETECTADO <<<");
+
+      if (firstPress) {
+        Serial.println("CALIBRACIÓN INICIAL...");
+        slowStartCalibration(SERVO1, PIN_S1, 23, 90);
+        slowStartCalibration(SERVO2, PIN_S2, 33, 90);
+        slowStartCalibration(SERVO3, PIN_S3, 32, 90);
+        slowStartCalibration(SERVO4, PIN_S4, 25, 90);
+        slowStartCalibration(SERVO5, PIN_S5, 22, 90);
+        firstPress = false;
+        safeWait(2000);
+      }
+
+      runWorkSequence();
+
+      // Esperar a soltar botón
+      while(digitalRead(PIN_START) == LOW) {
+        refreshSystem();
+        delay(10);
+      }
+      Serial.println("Listo para nueva orden.");
     }
   }
 
-  lastStartState = currentState;
+  lastStartState = currentStartState;
   delay(10);
 }
